@@ -15,7 +15,7 @@ class BreedController(
     @GetMapping("breeds/")
     fun getAllBreeds(): List<Breed> {
         log.info { "Fetching all breeds" }
-       val breeds = breedRepository.getAllBreeds()
+        val breeds = breedRepository.getAllBreeds()
         log.info { "Fetched ${breeds.size} breeds" }
         return breeds.map { breed ->
             Breed(
