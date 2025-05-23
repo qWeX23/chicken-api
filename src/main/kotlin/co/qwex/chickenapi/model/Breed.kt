@@ -1,6 +1,7 @@
 package co.qwex.chickenapi.model
 
 data class Breed(
+    val id: Int,
     val name: String,
     val origin: String?,
     val eggColor: String?,

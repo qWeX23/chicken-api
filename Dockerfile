@@ -7,7 +7,7 @@ ENV GOOGLE_APPLICATION_CREDENTIALS=/app/dummy-creds.json
 RUN apk add --no-cache bash git \
  && chmod +x gradlew \
  && ./gradlew build -x test --no-daemon
-
+#TODO get this to run the tests correctly
 # --- Runtime stage ---
 FROM eclipse-temurin:21-jre-alpine
 LABEL authors="qWeX23"

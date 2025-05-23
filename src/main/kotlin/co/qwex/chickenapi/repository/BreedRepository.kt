@@ -4,4 +4,5 @@ import co.qwex.chickenapi.model.Breed
 
 interface BreedRepository {
     fun getAllBreeds(): List<Breed>
+    fun getBreedById(id: Int): Breed?
 }
