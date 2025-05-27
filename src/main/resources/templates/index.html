@@ -1,36 +1,19 @@
 <!DOCTYPE html>
 <html lang="en" xmlns:th="http://www.thymeleaf.org">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chicken API Landing Page</title>
-    <!-- Tailwind CSS CDN -->
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🐔Chicken API </title>
     <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-50 min-h-screen flex flex-col justify-center items-center">
-    <div class="bg-white shadow-lg rounded-lg p-8 max-w-md w-full text-center">
-        <h1 class="text-3xl font-bold text-gray-800 mb-4">Welcome to Chicken API</h1>
-        <p class="text-gray-600 mb-6">A simple API for all your chicken-related needs.</p>
-        <div class="mb-6 text-left text-gray-700">
-            <h2 class="text-xl font-semibold mb-2">About the API</h2>
-            <ul class="list-disc list-inside mb-2">
-                <li>Built with <span class="font-semibold">Spring Boot</span> and <span class="font-semibold">Kotlin</span></li>
-                <li>RESTful endpoints for chicken data</li>
-                <li>OpenAPI (Swagger) documentation available</li>
-                <li>Integrated with Google Sheets for data storage</li>
-            </ul>
-            <h2 class="text-xl font-semibold mb-2 mt-4">How to Use</h2>
-            <ul class="list-disc list-inside">
-                <li>Explore endpoints and try requests in the <a href="/swagger-ui/index.html" class="text-blue-500 underline hover:text-blue-700">OpenAPI Docs</a></li>
-                <li>Check the <code>/actuator/health</code> endpoint for health status</li>
-                <li>See the <code>/api/chickens</code> endpoint for chicken data</li>
-            </ul>
-        </div>
-        <div class="flex flex-col gap-2">
-            <a href="/swagger-ui/index.html" class="inline-block bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded transition">View OpenAPI Docs</a>
-            <a href="https://spring.io/projects/spring-boot" class="inline-block bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded transition">Learn More About Spring Boot</a>
-        </div>
+  </head>
+  <body class="bg-gray-50 flex items-center justify-center min-h-screen">
+    <div class="bg-white shadow-lg rounded-lg p-10 text-center">
+      <h1 class="text-3xl font-bold mb-4 text-yellow-700">🐔Chicken API</h1>
+      <p class="mb-6 text-gray-700">Welcome to the Chicken API!</p>
+      <a href="/swagger-ui/index.html"
+         class="inline-block px-6 py-3 bg-yellow-400 text-white font-semibold rounded hover:bg-yellow-500 transition">
+        View API Documentation
+      </a>
     </div>
-</body>
+  </body>
 </html>
-
