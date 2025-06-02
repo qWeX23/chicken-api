@@ -2,7 +2,10 @@ package co.qwex.chickenapi.controller
 
 import mu.KotlinLogging
 import org.apache.commons.text.similarity.LevenshteinDistance
-import org.springframework.web.bind.annotation.*
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.RestController
 
 private val log = KotlinLogging.logger {}
 

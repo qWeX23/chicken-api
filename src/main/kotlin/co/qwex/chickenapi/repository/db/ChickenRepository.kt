@@ -13,15 +13,17 @@ class ChickenRepository(
     @Value("\${google.sheets.chickens.range}") private val range: String,
 ) : ChickenRepository {
     override fun getChickenById(id: Int): Chicken? {
-        val rowNumber = "${id+1}"
+        val rowNumber = "${id + 1}"
         val rangeWithId = "chickens!A$rowNumber:C$rowNumber"
         val response = sheets.spreadsheets().values()
             .get(spreadsheetId, rangeWithId).execute()
-        val values = response.getValues()?:return null
-        return values.map { Chicken(
-            id = it[0].toString().toInt(),
-            name = it[2].toString(),
-            breedId = it[1].toString().toInt(),
-        ) }.firstOrNull()
+        val values = response.getValues() ?: return null
+        return values.map {
+            Chicken(
+                id = it[0].toString().toInt(),
+                name = it[2].toString(),
+                breedId = it[1].toString().toInt(),
+            )
+        }.firstOrNull()
     }
 }

@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RestController
 class ChickenController(val repository: ChickenRepository) {
     @GetMapping("{id}")
     fun getChickenById(
-        @PathVariable id: Int
+        @PathVariable id: Int,
     ): Chicken {
         val chickenById = repository.getChickenById(id)
         chickenById ?: throw IllegalArgumentException("Chicken with ID $id not found")
@@ -19,7 +19,7 @@ class ChickenController(val repository: ChickenRepository) {
             Chicken(
                 id = it.id,
                 name = it.name,
-                breedId = it.breedId
+                breedId = it.breedId,
             )
         }
     }
@@ -29,6 +29,4 @@ data class Chicken(
     val id: Int,
     val name: String,
     val breedId: Int,
-) {
-
-}
+)
