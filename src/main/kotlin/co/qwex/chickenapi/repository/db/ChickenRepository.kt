@@ -14,7 +14,7 @@ class ChickenRepository(
 ) : ChickenRepository {
     override fun getChickenById(id: Int): Chicken? {
         val rowNumber = "${id + 1}"
-        val rangeWithId = "chickens!A$rowNumber:C$rowNumber"
+        val rangeWithId = "chickens!A$rowNumber:D$rowNumber"
         val response = sheets.spreadsheets().values()
             .get(spreadsheetId, rangeWithId).execute()
         val values = response.getValues() ?: return null
@@ -23,6 +23,7 @@ class ChickenRepository(
                 id = it[0].toString().toInt(),
                 name = it[2].toString(),
                 breedId = it[1].toString().toInt(),
+                imageUrl = it[3].toString(),
             )
         }.firstOrNull()
     }

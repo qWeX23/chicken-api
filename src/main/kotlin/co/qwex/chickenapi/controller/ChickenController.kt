@@ -20,6 +20,7 @@ class ChickenController(val repository: ChickenRepository) {
                 id = it.id,
                 name = it.name,
                 breedId = it.breedId,
+                imageUrl = it.imageUrl,
             )
         }
     }
@@ -29,4 +30,5 @@ data class Chicken(
     val id: Int,
     val name: String,
     val breedId: Int,
+    val imageUrl: String,
 )
