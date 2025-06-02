@@ -3,19 +3,29 @@ package co.qwex.chickenapi.repository.db
 import co.qwex.chickenapi.model.Breed
 import co.qwex.chickenapi.repository.BreedRepository
 import com.google.api.services.sheets.v4.Sheets
+import mu.KotlinLogging
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Repository
-private val log = mu.KotlinLogging.logger {}
+private val log = KotlinLogging.logger {}
+private const val SHEET_NAME = "breeds"
+private const val MIN_COLUMN = "A"
+private const val MAX_COLUMN = "G"
 
 @Repository
 class GoogleSheetBreedRepository(
     private val sheets: Sheets,
-    @Value("\${google.sheets.breeds.spreadsheetId}") private val spreadsheetId: String,
-    @Value("\${google.sheets.breeds.range}") private val range: String,
+    @Value("\${google.sheets.db.spreadsheetId}") private val spreadsheetId: String,
 ) : BreedRepository {
     override fun getAllBreeds(): List<Breed> {
         val response = sheets.spreadsheets().values()
-            .get(spreadsheetId, range)
+            .get(
+                spreadsheetId,
+                buildRange(
+                    sheetName = SHEET_NAME,
+                    minColumn = MIN_COLUMN,
+                    maxColumn = MAX_COLUMN,
+                ),
+            )
             .execute()
         val values = response.getValues() ?: return emptyList()
         return values.drop(1).map { row ->
@@ -32,9 +42,8 @@ class GoogleSheetBreedRepository(
         }
     }
     override fun getBreedById(id: Int): Breed? {
-        val rangeWithId = "breeds!A${id + 1}:G${id + 1}"
         val response = sheets.spreadsheets().values()
-            .get(spreadsheetId, rangeWithId)
+            .get(spreadsheetId, buildRange(SHEET_NAME, MIN_COLUMN, MAX_COLUMN, id + 1))
             .execute()
         val values = response.getValues() ?: return null
         log.info { "Fetched breed with ID $id: $values" }
@@ -51,4 +60,8 @@ class GoogleSheetBreedRepository(
             )
         }.firstOrNull()
     }
+}
+
+fun buildRange(sheetName: String, minColumn: String, maxColumn: String, index: Int? = null): String {
+    return "$sheetName!$minColumn${index ?: 1}:$maxColumn${index ?: ""}"
 }
