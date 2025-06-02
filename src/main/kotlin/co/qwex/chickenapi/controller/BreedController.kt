@@ -2,11 +2,7 @@ package co.qwex.chickenapi.controller
 
 import mu.KotlinLogging
 import org.apache.commons.text.similarity.LevenshteinDistance
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RequestParam
-import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.*
 
 private val log = KotlinLogging.logger {}
 
@@ -50,7 +46,8 @@ class BreedController(
         log.info { "Fetching breed with ID $id" }
         val breed = breedRepository.getBreedById(id)
         log.info { "Fetched breed with ID $id: $breed" }
-        return breed?.let {
+        breed ?: throw IllegalArgumentException("Breed with ID $id not found")
+        return breed.let {
             Breed(
                 name = it.name,
                 origin = it.origin,
