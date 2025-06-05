@@ -30,14 +30,14 @@ class BreedController(
                 temperament = breed.temperament,
                 description = breed.description,
                 imageUrl = breed.imageUrl,
+                eggNumber = 0,
             )
         }
         log.info { "Fetched ${breeds.size} breeds" }
 
-        log.info { breedRepository.getBreedById(2) }
-
         if (name.isNullOrBlank()) return breeds
-        val distance = LevenshteinDistance(2) // max distance for fuzziness
+        val distance = LevenshteinDistance(2)
+        log.info { "Filtered to ${breeds.size} breeds" }
         return breeds.filter {
             distance.apply(it.name.lowercase(), name.lowercase()) != -1
         }
@@ -57,6 +57,7 @@ class BreedController(
                 origin = it.origin,
                 eggColor = it.eggColor,
                 eggSize = it.eggSize,
+                eggNumber = 0,
                 temperament = it.temperament,
                 description = it.description,
                 imageUrl = it.imageUrl,
@@ -70,6 +71,7 @@ data class Breed(
     val origin: String?,
     val eggColor: String?,
     val eggSize: String?,
+    val eggNumber: Int?,
     val temperament: String?,
     val description: String?,
     val imageUrl: String?,

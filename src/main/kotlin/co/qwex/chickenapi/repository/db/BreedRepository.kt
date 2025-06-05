@@ -38,6 +38,7 @@ class GoogleSheetBreedRepository(
                 temperament = row.getOrNull(5)?.toString(),
                 description = row.getOrNull(6)?.toString(),
                 imageUrl = row.getOrNull(7)?.toString(),
+                numEggs = row.getOrNull(8)?.toString()?.toIntOrNull(),
             )
         }
     }
@@ -57,6 +58,7 @@ class GoogleSheetBreedRepository(
                 temperament = row.getOrNull(5)?.toString(),
                 description = row.getOrNull(6)?.toString(),
                 imageUrl = row.getOrNull(7)?.toString(),
+                numEggs = row.getOrNull(8)?.toString()?.toIntOrNull(),
             )
         }.firstOrNull()
     }
