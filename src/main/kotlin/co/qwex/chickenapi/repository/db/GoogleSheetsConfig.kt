@@ -1,8 +1,11 @@
+package co.qwex.chickenapi.repository.db
+
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport
 import com.google.api.client.json.jackson2.JacksonFactory
 import com.google.api.services.sheets.v4.Sheets
 import com.google.auth.http.HttpCredentialsAdapter
 import com.google.auth.oauth2.GoogleCredentials
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
@@ -13,6 +16,7 @@ class GoogleSheetsConfig {
     private val APPLICATION_NAME = "Chicken API"
 
     @Bean
+    @ConditionalOnMissingBean(Sheets::class)
     fun sheetsService(): Sheets {
         // 1. Pick up credentials from ADC (GOOGLE_APPLICATION_CREDENTIALS)
         val credentials = GoogleCredentials

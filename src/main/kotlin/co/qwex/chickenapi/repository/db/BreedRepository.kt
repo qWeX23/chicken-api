@@ -9,7 +9,7 @@ import org.springframework.stereotype.Repository
 private val log = KotlinLogging.logger {}
 private const val SHEET_NAME = "breeds"
 private const val MIN_COLUMN = "A"
-private const val MAX_COLUMN = "G"
+private const val MAX_COLUMN = "I"
 
 @Repository
 class GoogleSheetBreedRepository(
