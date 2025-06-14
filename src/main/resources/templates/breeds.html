@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:replace="layout :: layout(~{::title}, ~{::section})">
+  <head>
+    <title>Chicken Breeds</title>
+  </head>
+  <section>
+    <h1 class="text-3xl font-bold mb-6 text-yellow-700 text-center">
+      Chicken Breeds
+    </h1>
+    <table class="min-w-full divide-y divide-gray-200 bg-white shadow rounded-lg">
+      <thead class="bg-gray-100">
+        <tr>
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+          <th class="px-6 py-3"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-200" th:each="breed : ${breeds}">
+        <tr>
+          <td class="px-6 py-4" th:if="${breed.imageUrl}">
+            <img th:src="${breed.imageUrl}" alt="breed image" class="h-16 w-16 rounded object-cover" />
+          </td>
+          <td class="px-6 py-4" th:text="${breed.name}"></td>
+          <td class="px-6 py-4 text-right">
+            <a
+              class="text-blue-600 hover:underline"
+              th:href="@{'/breeds/' + ${breed.id} + '/view'}">View</a>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+</html>
