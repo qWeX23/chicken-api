@@ -5,7 +5,10 @@ on:
   pull_request:
 
 env:
-  IMAGE_NAME: ghcr.io/qwex23/chicken-api:latest
+  # Docker tag for the production image
+  LATEST_IMAGE_NAME: ghcr.io/qwex23/chicken-api:latest
+  # Docker tag that includes the current commit SHA
+  COMMIT_IMAGE_NAME: ghcr.io/qwex23/chicken-api:${{ github.sha }}
 
 jobs:
   build:
@@ -25,7 +28,7 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.event_name == 'push'
     permissions:
       contents: read
       packages: write
@@ -44,7 +47,17 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build Docker image
-        run: docker build -t ${{ env.IMAGE_NAME }} .
-      - name: Push Docker image
-        run: docker push ${{ env.IMAGE_NAME }}
+      - name: Determine Docker tags
+        id: tags
+        run: |
+          tags="${{ env.COMMIT_IMAGE_NAME }}"
+          if [[ "$GITHUB_REF" == 'refs/heads/main' ]]; then
+            tags="$tags,${{ env.LATEST_IMAGE_NAME }}"
+          fi
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
