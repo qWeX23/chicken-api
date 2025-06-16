@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title th:replace="${title}">Chicken API</title>
     <link rel="icon" href="/favicon_64.ico" type="image/x-icon" />
+    <meta name="supabase-url" th:content="${@environment.getProperty('supabase.url')}" />
+    <meta name="supabase-key" th:content="${@environment.getProperty('supabase.anon-key')}" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   </head>
