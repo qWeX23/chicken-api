@@ -2,12 +2,12 @@ import co.qwex.chickenapi.ChickenApiApplication
 import com.google.api.services.sheets.v4.Sheets
 import org.junit.jupiter.api.Test
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.test.mock.mockito.MockBean
+import org.springframework.test.context.bean.override.mockito.MockitoBean
 
 @SpringBootTest(classes = [ChickenApiApplication::class])
 class ChickenApiApplicationTests {
 
-    @MockBean
+    @MockitoBean
     private lateinit var sheetsService: Sheets
 
     @Test
