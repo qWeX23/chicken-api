@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{layout :: layout(~{::title}, ~{::section})}">
+  <head>
+    <title>Login</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+    <script th:inline="javascript">
+      const supabase = supabase.createClient("[[${supabaseUrl}]]", "[[${supabaseAnonKey}]]")
+      function signIn(provider) {
+        supabase.auth.signInWithOAuth({ provider })
+      }
+    </script>
+  </head>
+  <section class="flex items-center justify-center min-h-screen">
+    <div class="bg-white shadow-lg rounded-lg p-10 text-center">
+      <h1 class="text-2xl font-bold mb-4">Sign In</h1>
+      <div class="flex flex-col gap-4">
+        <button class="px-6 py-2 bg-yellow-400 text-white rounded" onclick="signIn('google')">Google</button>
+        <button class="px-6 py-2 bg-yellow-400 text-white rounded" onclick="signIn('apple')">Apple</button>
+        <button class="px-6 py-2 bg-yellow-400 text-white rounded" onclick="signIn('facebook')">Facebook</button>
+      </div>
+    </div>
+  </section>
+</html>
