@@ -2,6 +2,7 @@ package co.qwex.chickenapi.controller
 
 import mu.KotlinLogging
 import org.apache.commons.text.similarity.LevenshteinDistance
+import org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
@@ -19,10 +20,10 @@ class BreedController(
     @GetMapping()
     fun getAllBreeds(
         @RequestParam(required = false) name: String?,
-    ): List<Breed> {
+    ): List<BreedResponse> {
         log.info { "Fetching all breeds" }
         val breeds = breedRepository.getAllBreeds().map { breed ->
-            Breed(
+            BreedResponse(
                 name = breed.name,
                 origin = breed.origin,
                 eggColor = breed.eggColor,
@@ -31,7 +32,9 @@ class BreedController(
                 description = breed.description,
                 imageUrl = breed.imageUrl,
                 eggNumber = 0,
-            )
+            ).apply {
+                add(linkTo(BreedController::class.java).slash(breed.id).withSelfRel())
+            }
         }
         log.info { "Fetched ${breeds.size} breeds" }
 
@@ -46,13 +49,13 @@ class BreedController(
     @GetMapping("{id}")
     fun getBreedById(
         @PathVariable id: Int,
-    ): Breed? {
+    ): BreedResponse {
         log.info { "Fetching breed with ID $id" }
         val breed = breedRepository.getBreedById(id)
         log.info { "Fetched breed with ID $id: $breed" }
         breed ?: throw IllegalArgumentException("Breed with ID $id not found")
         return breed.let {
-            Breed(
+            BreedResponse(
                 name = it.name,
                 origin = it.origin,
                 eggColor = it.eggColor,
@@ -61,12 +64,14 @@ class BreedController(
                 temperament = it.temperament,
                 description = it.description,
                 imageUrl = it.imageUrl,
-            )
+            ).apply {
+                add(linkTo(BreedController::class.java).slash(id).withSelfRel())
+            }
         }
     }
 }
 
-data class Breed(
+data class BreedResponse(
     val name: String,
     val origin: String?,
     val eggColor: String?,
@@ -75,4 +80,4 @@ data class Breed(
     val temperament: String?,
     val description: String?,
     val imageUrl: String?,
-)
+) : org.springframework.hateoas.RepresentationModel<BreedResponse>()
