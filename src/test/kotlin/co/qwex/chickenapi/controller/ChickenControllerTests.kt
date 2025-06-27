@@ -37,5 +37,7 @@ class ChickenControllerTests {
             .andExpect { status { isOk() } }
             .andExpect { jsonPath("$.name") { value("Clucky") } }
             .andExpect { jsonPath("$.breedId") { value(2) } }
+            .andExpect { jsonPath("$._links.self.href") { value("http://localhost/api/v1/chickens/$id") } }
+            .andExpect { jsonPath("$._links.breed.href") { value("http://localhost/api/v1/breeds/2") } }
     }
 }
