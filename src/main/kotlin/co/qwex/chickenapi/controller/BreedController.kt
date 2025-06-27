@@ -2,6 +2,8 @@ package co.qwex.chickenapi.controller
 
 import mu.KotlinLogging
 import org.apache.commons.text.similarity.LevenshteinDistance
+import org.springframework.hateoas.EntityModel
+import org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
@@ -19,19 +21,23 @@ class BreedController(
     @GetMapping()
     fun getAllBreeds(
         @RequestParam(required = false) name: String?,
-    ): List<Breed> {
+    ): List<EntityModel<Breed>> {
         log.info { "Fetching all breeds" }
         val breeds = breedRepository.getAllBreeds().map { breed ->
-            Breed(
-                name = breed.name,
-                origin = breed.origin,
-                eggColor = breed.eggColor,
-                eggSize = breed.eggSize,
-                temperament = breed.temperament,
-                description = breed.description,
-                imageUrl = breed.imageUrl,
-                eggNumber = 0,
+            val model = EntityModel.of(
+                Breed(
+                    name = breed.name,
+                    origin = breed.origin,
+                    eggColor = breed.eggColor,
+                    eggSize = breed.eggSize,
+                    temperament = breed.temperament,
+                    description = breed.description,
+                    imageUrl = breed.imageUrl,
+                    eggNumber = 0,
+                ),
             )
+            model.add(linkTo(BreedController::class.java).slash(breed.id).withSelfRel())
+            model
         }
         log.info { "Fetched ${breeds.size} breeds" }
 
@@ -39,29 +45,34 @@ class BreedController(
         val distance = LevenshteinDistance(2)
         log.info { "Filtered to ${breeds.size} breeds" }
         return breeds.filter {
-            distance.apply(it.name.lowercase(), name.lowercase()) != -1
+            val breedName = it.content?.name ?: ""
+            distance.apply(breedName.lowercase(), name.lowercase()) != -1
         }
     }
 
     @GetMapping("{id}")
     fun getBreedById(
         @PathVariable id: Int,
-    ): Breed? {
+    ): EntityModel<Breed> {
         log.info { "Fetching breed with ID $id" }
         val breed = breedRepository.getBreedById(id)
         log.info { "Fetched breed with ID $id: $breed" }
         breed ?: throw IllegalArgumentException("Breed with ID $id not found")
         return breed.let {
-            Breed(
-                name = it.name,
-                origin = it.origin,
-                eggColor = it.eggColor,
-                eggSize = it.eggSize,
-                eggNumber = 0,
-                temperament = it.temperament,
-                description = it.description,
-                imageUrl = it.imageUrl,
+            val model = EntityModel.of(
+                Breed(
+                    name = it.name,
+                    origin = it.origin,
+                    eggColor = it.eggColor,
+                    eggSize = it.eggSize,
+                    eggNumber = 0,
+                    temperament = it.temperament,
+                    description = it.description,
+                    imageUrl = it.imageUrl,
+                ),
             )
+            model.add(linkTo(BreedController::class.java).slash(id).withSelfRel())
+            model
         }
     }
 }
