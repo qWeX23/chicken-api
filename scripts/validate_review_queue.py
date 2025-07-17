@@ -54,14 +54,18 @@ def main():
 
         for row in reader:
             prompt = build_prompt(row)
-            result = query_ollama(args.ollama_url, prompt, model=args.model)
-            row.update({
-                "real_breed": result.get("real_breed"),
-                "factual": result.get("factual"),
-                "harmful": result.get("harmful"),
-                "analysis": result.get("analysis"),
-            })
-            writer.writerow(row)
+            try:
+                result = query_ollama(args.ollama_url, prompt, model=args.model)
+                row.update({
+                    "real_breed": result.get("real_breed"),
+                    "factual": result.get("factual"),
+                    "harmful": result.get("harmful"),
+                    "analysis": result.get("analysis"),
+                })
+                writer.writerow(row)
+            except Exception as e:
+                print(f"Error processing row {row.get('name', 'unknown')}: {e}")
+                continue
 
 
 if __name__ == "__main__":
