@@ -7,14 +7,19 @@ from typing import Dict, Any
 
 def query_ollama(host: str, prompt: str, model: str = "llama2") -> Dict[str, Any]:
     url = f"{host.rstrip('/')}/api/generate"
-    response = requests.post(url, json={"model": model, "prompt": prompt, "stream": False})
-    response.raise_for_status()
-    data = response.json()
-    text = data.get("response", "").strip()
     try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return {"analysis": text}
+        response = requests.post(url, json={"model": model, "prompt": prompt, "stream": False})
+        response.raise_for_status()
+        data = response.json()
+        text = data.get("response", "").strip()
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return {"analysis": text}
+    except requests.RequestException as e:
+        print(f"Error querying Ollama API at {url} with prompt: {prompt}")
+        print(f"Exception: {e}")
+        return {"analysis": "Error querying Ollama API"}
 
 
 def build_prompt(row: Dict[str, str]) -> str:
