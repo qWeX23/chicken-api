@@ -1,4 +1,5 @@
 import co.qwex.chickenapi.ChickenApiApplication
+import co.qwex.chickenapi.service.ReviewQueue
 import com.google.api.services.sheets.v4.Sheets
 import com.google.api.services.sheets.v4.model.ValueRange
 import org.junit.jupiter.api.Test
@@ -10,12 +11,16 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.post
 
 @SpringBootTest(classes = [ChickenApiApplication::class])
 @AutoConfigureMockMvc
 class BreedControllerTests {
     @Autowired
     lateinit var mockMvc: MockMvc
+
+    @Autowired
+    lateinit var reviewQueue: ReviewQueue
 
     @MockitoBean(answers = org.mockito.Answers.RETURNS_DEEP_STUBS)
     lateinit var sheets: Sheets
@@ -82,5 +87,26 @@ class BreedControllerTests {
             .andExpect { jsonPath("$[0].name") { value("Orpington") } }
             .andExpect { jsonPath("$[0].links[0].href") { value("http://localhost/api/v1/breeds/2") } }
             .andExpect { jsonPath("$[0].links[0].rel") { value("self") } }
+    }
+
+    @Test
+    fun `submit breed for review`() {
+        val payload = """{
+            "name":"NewBreed",
+            "origin":"Earth",
+            "eggColor":"Brown",
+            "eggSize":"Large",
+            "eggNumber":0,
+            "temperament":"Calm",
+            "description":"desc",
+            "imageUrl":"img"
+        }"""
+
+        mockMvc.post("/api/v1/breeds/") {
+            contentType = org.springframework.http.MediaType.APPLICATION_JSON
+            content = payload
+        }.andExpect { status { isAccepted() } }
+
+        assert(reviewQueue.getBreeds().any { it.name == "NewBreed" })
     }
 }

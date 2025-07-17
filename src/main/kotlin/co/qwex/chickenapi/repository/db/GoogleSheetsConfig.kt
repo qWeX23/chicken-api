@@ -21,7 +21,7 @@ class GoogleSheetsConfig {
         // 1. Pick up credentials from ADC (GOOGLE_APPLICATION_CREDENTIALS)
         val credentials = GoogleCredentials
             .getApplicationDefault()
-            .createScoped(listOf("https://www.googleapis.com/auth/spreadsheets.readonly"))
+            .createScoped(listOf("https://www.googleapis.com/auth/spreadsheets"))
 
         // 2. Build the Sheets client
         return Sheets.Builder(

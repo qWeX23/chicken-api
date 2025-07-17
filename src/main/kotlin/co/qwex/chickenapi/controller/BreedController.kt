@@ -1,13 +1,19 @@
 package co.qwex.chickenapi.controller
 
+import co.qwex.chickenapi.service.PendingBreed
+import co.qwex.chickenapi.service.ReviewQueue
 import mu.KotlinLogging
 import org.apache.commons.text.similarity.LevenshteinDistance
 import org.springframework.hateoas.EntityModel
 import org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo
+import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 private val log = KotlinLogging.logger {}
@@ -16,6 +22,7 @@ private val log = KotlinLogging.logger {}
 @RequestMapping("api/v1/breeds/")
 class BreedController(
     private val breedRepository: co.qwex.chickenapi.repository.BreedRepository,
+    private val reviewQueue: ReviewQueue,
 ) {
 
     @GetMapping()
@@ -74,6 +81,12 @@ class BreedController(
             model.add(linkTo(BreedController::class.java).slash(id).withSelfRel())
             model
         }
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    fun submitBreedForReview(@RequestBody breed: PendingBreed) {
+        reviewQueue.addBreed(breed)
     }
 }
 
