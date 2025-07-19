@@ -1,0 +1,12 @@
+bucket4j:
+  enabled: false
+spring:
+  application:
+    name: chicken-api
+
+google:
+  sheets:
+    db:
+      spreadsheetId: 1fZBTykjv03MY8p0U8pbIsItKqOeJuNHm_zCWDUj_DiA
+    breeds:
+      range: breeds!A1:G
