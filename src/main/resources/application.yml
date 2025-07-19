@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: chicken-api
+
+google:
+  sheets:
+    db:
+      spreadsheetId: 1fZBTykjv03MY8p0U8pbIsItKqOeJuNHm_zCWDUj_DiA
+    breeds:
+      range: breeds!A1:G
+
+bucket4j:
+  enabled: true
+  filters:
+    - cache-name: in-memory-buckets
+      url: /api/**
+      rate-limits:
+        - bandwidths:
+            - capacity: 10
+              time: 1
+              unit: seconds
+      metrics:
+        enabled: true
+    - cache-name: in-memory-buckets
+      url: /api/**
+      http-methods: [POST]
+      cache-key: "#{request.remoteAddr}"
+      rate-limits:
+        - bandwidths:
+            - capacity: 1
+              time: 1
+              unit: minutes
+      metrics:
+        enabled: true

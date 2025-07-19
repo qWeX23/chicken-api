@@ -32,6 +32,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-hateoas")
     implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+    implementation("com.giffing.bucket4j.spring.boot.starter:bucket4j-spring-boot-starter:0.12.10")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("com.google.api-client:google-api-client:2.4.1")
     implementation("com.google.apis:google-api-services-sheets:v4-rev20230815-2.0.0")
