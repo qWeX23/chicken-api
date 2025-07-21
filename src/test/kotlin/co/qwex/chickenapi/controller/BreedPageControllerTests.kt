@@ -1,5 +1,6 @@
 import co.qwex.chickenapi.ChickenApiApplication
 import co.qwex.chickenapi.TestFixtures
+import co.qwex.chickenapi.config.TestConfig
 import co.qwex.chickenapi.repository.BreedRepository
 import com.google.api.services.sheets.v4.Sheets
 import org.junit.jupiter.api.Test
@@ -11,7 +12,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 
-@SpringBootTest(classes = [ChickenApiApplication::class])
+@SpringBootTest(classes = [ChickenApiApplication::class, TestConfig::class])
 @AutoConfigureMockMvc
 class BreedPageControllerTests {
     @Autowired

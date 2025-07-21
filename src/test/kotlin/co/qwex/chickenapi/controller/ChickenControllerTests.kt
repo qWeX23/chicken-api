@@ -1,4 +1,5 @@
 import co.qwex.chickenapi.ChickenApiApplication
+import co.qwex.chickenapi.config.TestConfig
 import co.qwex.chickenapi.service.ReviewQueue
 import com.google.api.services.sheets.v4.Sheets
 import com.google.api.services.sheets.v4.model.ValueRange
@@ -13,7 +14,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 
-@SpringBootTest(classes = [ChickenApiApplication::class])
+@SpringBootTest(classes = [ChickenApiApplication::class, TestConfig::class])
 @AutoConfigureMockMvc
 class ChickenControllerTests {
     @Autowired

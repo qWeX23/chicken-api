@@ -1,8 +1,10 @@
 import co.qwex.chickenapi.ChickenApiApplication
+import co.qwex.chickenapi.config.TestConfig
 import co.qwex.chickenapi.service.PendingBreed
 import co.qwex.chickenapi.service.PendingChicken
 import co.qwex.chickenapi.service.ReviewQueue
 import com.google.api.services.sheets.v4.Sheets
+import com.google.api.services.sheets.v4.Sheets.Spreadsheets.Values
 import com.google.api.services.sheets.v4.model.AppendValuesResponse
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
@@ -13,7 +15,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 
-@SpringBootTest(classes = [ChickenApiApplication::class])
+@SpringBootTest(classes = [ChickenApiApplication::class, TestConfig::class])
 class ReviewQueueTests {
     @Autowired
     lateinit var reviewQueue: ReviewQueue
