@@ -39,3 +39,4 @@ out/
 ### Kotlin ###
 .kotlin
 /chicken-api-460112-52ea6363b3cd.json
+.DS_Store
