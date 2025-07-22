@@ -153,6 +153,18 @@ bucket4j.filters[1].rate-limits[0].bandwidths[0].unit=hours
 bucket4j.filters[1].rate-limits[0].cache-key=@httpServletRequest.remoteAddr
 ```
 
+For example, the application now includes a second filter that targets **POST**
+requests globally:
+
+```properties
+bucket4j.filters[1].cache-name=buckets
+bucket4j.filters[1].url=.*
+bucket4j.filters[1].http-method=POST
+bucket4j.filters[1].rate-limits[0].bandwidths[0].capacity=50
+bucket4j.filters[1].rate-limits[0].bandwidths[0].time=1
+bucket4j.filters[1].rate-limits[0].bandwidths[0].unit=minutes
+```
+
 ### 4.5. Troubleshooting
 
 -   **"No Bucket4j cache configuration found"**: Ensure `spring.cache.type=jcache` is set, `bucket4j.cache-to-use=jcache` is present, and the necessary Caffeine and JCache dependencies are in `build.gradle.kts`. Also, confirm `@EnableCaching` is on your main application class.
