@@ -1,4 +1,0 @@
-name,origin,eggColor,eggSize,eggNumber,temperment,description,imageUrl,ollama_error,raw_ollama_response
-Rhode Island Red,USA,Brown,Large,250,Docile,"A dual-purpose breed, known for its egg laying ability.",http://example.com/rhode_island_red.jpg,API call failed,No response from Ollama API
-Blue Andalusian,Spain,White,Medium,180,Active,"A Mediterranean breed, known for its striking blue plumage.",http://example.com/blue_andalusian.jpg,API call failed,No response from Ollama API
-Imaginary Chicken,Mars,Green,Small,10,Aggressive,"A chicken from outer space, lays glowing green eggs.",http://example.com/imaginary_chicken.jpg,API call failed,No response from Ollama API
