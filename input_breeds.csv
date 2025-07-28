@@ -1,0 +1,4 @@
+name,origin,eggColor,eggSize,eggNumber,temperment,description,imageUrl
+Rhode Island Red,USA,Brown,Large,250,Docile,"A dual-purpose breed, known for its egg laying ability.",http://example.com/rhode_island_red.jpg
+Blue Andalusian,Spain,White,Medium,180,Active,"A Mediterranean breed, known for its striking blue plumage.",http://example.com/blue_andalusian.jpg
+Imaginary Chicken,Mars,Green,Small,10,Aggressive,"A chicken from outer space, lays glowing green eggs.",http://example.com/imaginary_chicken.jpg

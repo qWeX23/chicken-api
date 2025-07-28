@@ -40,3 +40,22 @@ out/
 .kotlin
 /chicken-api-460112-52ea6363b3cd.json
 .DS_Store
+
+### Python ###
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.pkl
+*.egg
+*.egg-info/
+*.whl
+.Python
+env/
+venv/
+venv_chicken_api/
+activate/   
+
+
+### OpenAI ###
+openai_api_key.txt
