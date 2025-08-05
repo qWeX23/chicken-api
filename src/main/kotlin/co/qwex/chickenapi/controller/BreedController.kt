@@ -40,7 +40,7 @@ class BreedController(
                     temperament = breed.temperament,
                     description = breed.description,
                     imageUrl = breed.imageUrl,
-                    eggNumber = 0,
+                    eggNumber = breed.numEggs,
                 ),
             )
             model.add(linkTo(BreedController::class.java).slash(breed.id).withSelfRel())
@@ -72,7 +72,7 @@ class BreedController(
                     origin = it.origin,
                     eggColor = it.eggColor,
                     eggSize = it.eggSize,
-                    eggNumber = 0,
+                    eggNumber = it.numEggs,
                     temperament = it.temperament,
                     description = it.description,
                     imageUrl = it.imageUrl,
