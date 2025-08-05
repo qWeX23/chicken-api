@@ -2,6 +2,13 @@ package co.qwex.chickenapi.controller
 
 import co.qwex.chickenapi.service.PendingBreed
 import co.qwex.chickenapi.service.ReviewQueue
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.ArraySchema
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.ExampleObject
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
 import mu.KotlinLogging
 import org.apache.commons.text.similarity.LevenshteinDistance
 import org.springframework.hateoas.EntityModel
@@ -15,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import io.swagger.v3.oas.annotations.parameters.RequestBody as OpenApiRequestBody
 
 private val log = KotlinLogging.logger {}
 
@@ -25,6 +33,29 @@ class BreedController(
     private val reviewQueue: ReviewQueue,
 ) {
 
+    @Operation(
+        summary = "List chicken breeds",
+        description = "Retrieve all known chicken breeds. Optionally filter by name.",
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "Breeds retrieved",
+                content = [
+                    Content(
+                        mediaType = "application/json",
+                        array = ArraySchema(schema = Schema(implementation = Breed::class)),
+                        examples = [
+                            ExampleObject(
+                                value = "[{\"name\":\"Silkie\",\"origin\":\"China\"}]",
+                            ),
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    )
     @GetMapping()
     fun getAllBreeds(
         @RequestParam(required = false) name: String?,
@@ -57,6 +88,30 @@ class BreedController(
         }
     }
 
+    @Operation(
+        summary = "Get breed by ID",
+        description = "Retrieve details for a specific breed by its identifier.",
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "Breed found",
+                content = [
+                    Content(
+                        mediaType = "application/json",
+                        schema = Schema(implementation = Breed::class),
+                        examples = [
+                            ExampleObject(
+                                value = "{\"name\":\"Silkie\",\"origin\":\"China\"}",
+                            ),
+                        ],
+                    ),
+                ],
+            ),
+            ApiResponse(responseCode = "404", description = "Breed not found"),
+        ],
+    )
     @GetMapping("{id}")
     fun getBreedById(
         @PathVariable id: Int,
@@ -83,9 +138,36 @@ class BreedController(
         }
     }
 
+    @Operation(
+        summary = "Submit breed for review",
+        description = "Propose a new chicken breed to be reviewed and added to the catalogue.",
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "202", description = "Breed accepted for review"),
+            ApiResponse(responseCode = "400", description = "Invalid breed data"),
+        ],
+    )
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
-    fun submitBreedForReview(@RequestBody breed: PendingBreed) {
+    fun submitBreedForReview(
+        @OpenApiRequestBody(
+            required = true,
+            description = "Breed to review",
+            content = [
+                Content(
+                    mediaType = "application/json",
+                    schema = Schema(implementation = PendingBreed::class),
+                    examples = [
+                        ExampleObject(
+                            value = "{\"name\":\"Silkie\",\"origin\":\"China\",\"eggColor\":\"White\"}",
+                        ),
+                    ],
+                ),
+            ],
+        )
+        @RequestBody breed: PendingBreed,
+    ) {
         reviewQueue.addBreed(breed)
     }
 }
