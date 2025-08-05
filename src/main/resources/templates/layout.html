@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org" th:fragment="layout(title, content)">
+<html lang="en" xmlns:th="http://www.thymeleaf.org" th:fragment="layout(title, content, meta)">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <th:block th:replace="${meta}" />
     <title th:replace="${title}">Chicken API</title>
     <link rel="icon" href="/favicon_64.ico" type="image/x-icon" />
     <script src="https://cdn.tailwindcss.com"></script>
