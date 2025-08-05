@@ -1,10 +1,17 @@
 <!DOCTYPE html>
 <html
   xmlns:th="http://www.thymeleaf.org"
-  th:replace="~{layout :: layout(~{::title}, ~{::section})}"
+  th:replace="~{layout :: layout(~{::title}, ~{::section}, ~{::meta})}"
 >
   <head>
     <title>Chicken Breeds</title>
+    <th:block th:fragment="meta">
+      <meta name="description" content="Browse chicken breeds in the Chicken API." />
+      <meta property="og:title" content="Chicken Breeds" />
+      <meta property="og:description" content="Browse chicken breeds in the Chicken API." />
+      <meta property="og:url" th:content="@{/breeds}" />
+      <meta property="og:type" content="website" />
+    </th:block>
   </head>
   <section>
     <h1 class="text-3xl font-bold mb-6 text-yellow-700 text-center">
