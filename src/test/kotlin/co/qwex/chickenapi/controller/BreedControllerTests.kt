@@ -56,6 +56,8 @@ class BreedControllerTests {
             .andExpect { jsonPath("$.length()") { value(2) } }
             .andExpect { jsonPath("$[0].name") { value("Silkie") } }
             .andExpect { jsonPath("$[1].name") { value("Orpington") } }
+            .andExpect { jsonPath("$[0].eggNumber") { value(200) } }
+            .andExpect { jsonPath("$[1].eggNumber") { value(180) } }
             .andExpect { jsonPath("$[0].links[0].href") { value("http://localhost/api/v1/breeds/1") } }
             .andExpect { jsonPath("$[0].links[0].rel") { value("self") } }
             .andExpect { jsonPath("$[1].links[0].href") { value("http://localhost/api/v1/breeds/2") } }
@@ -69,6 +71,7 @@ class BreedControllerTests {
         mockMvc.get("/api/v1/breeds/$id")
             .andExpect { status { isOk() } }
             .andExpect { jsonPath("$.name") { value("Silkie") } }
+            .andExpect { jsonPath("$.eggNumber") { value(200) } }
             .andExpect { jsonPath("$._links.self.href") { value("http://localhost/api/v1/breeds/$id") } }
     }
 
@@ -86,6 +89,7 @@ class BreedControllerTests {
             .andExpect { status { isOk() } }
             .andExpect { jsonPath("$.length()") { value(1) } }
             .andExpect { jsonPath("$[0].name") { value("Orpington") } }
+            .andExpect { jsonPath("$[0].eggNumber") { value(180) } }
             .andExpect { jsonPath("$[0].links[0].href") { value("http://localhost/api/v1/breeds/2") } }
             .andExpect { jsonPath("$[0].links[0].rel") { value("self") } }
     }
