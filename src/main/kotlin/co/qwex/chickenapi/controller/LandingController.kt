@@ -9,4 +9,9 @@ class LandingController {
     fun landing(): String {
         return "index"
     }
+
+    @GetMapping("/about")
+    fun about(): String {
+        return "about"
+    }
 }

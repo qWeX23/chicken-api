@@ -9,8 +9,13 @@
   <section class="flex items-center justify-center min-h-screen">
     <div class="bg-white shadow-lg rounded-lg p-10 text-center">
       <h1 class="text-3xl font-bold mb-4 text-yellow-700">🐔Chicken API</h1>
-      <p class="mb-6 text-gray-700">Welcome to the Chicken API!</p>
-      <div class="flex justify-center gap-4">
+      <p class="mb-6 text-gray-700">
+        Open-source chicken breed data, ready for your apps.
+      </p>
+      <pre class="bg-gray-100 p-4 rounded text-left mb-6">
+<code>curl https://chickenapi.com/api/v1/breeds</code>
+      </pre>
+      <div class="flex flex-wrap justify-center gap-4">
         <a
           href="/breeds"
           class="inline-block px-6 py-3 bg-yellow-400 text-white font-semibold rounded hover:bg-yellow-500 transition"
@@ -21,23 +26,22 @@
           href="/swagger-ui/index.html"
           class="inline-block px-6 py-3 bg-yellow-400 text-white font-semibold rounded hover:bg-yellow-500 transition"
         >
-          View API Documentation
+          API Docs
         </a>
-      </div>
-      <div class="mt-6">
-        <script
-          type="text/javascript"
-          src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
-          data-name="bmc-button"
-          data-slug="qwex"
-          data-color="#FF5F5F"
-          data-emoji="🐔"
-          data-font="Arial"
-          data-text="Support the Flock"
-          data-outline-color="#000000"
-          data-font-color="#ffffff"
-          data-coffee-color="#FFDD00"
-        ></script>
+        <a
+          href="https://github.com/qWeX23/chicken-api"
+          class="inline-block px-6 py-3 bg-yellow-400 text-white font-semibold rounded hover:bg-yellow-500 transition"
+          target="_blank"
+          rel="noopener"
+        >
+          GitHub
+        </a>
+        <a
+          href="/about"
+          class="inline-block px-6 py-3 bg-yellow-400 text-white font-semibold rounded hover:bg-yellow-500 transition"
+        >
+          About / Contribute
+        </a>
       </div>
     </div>
   </section>
