@@ -1,10 +1,21 @@
 <!DOCTYPE html>
 <html
   xmlns:th="http://www.thymeleaf.org"
-  th:replace="~{layout :: layout(~{::title}, ~{::section})}"
+  th:replace="~{layout :: layout(~{::title}, ~{::section}, ~{::meta})}"
 >
   <head>
     <title th:text="${breed.name}">Breed Profile</title>
+    <th:block th:fragment="meta">
+      <meta name="description" th:content="${breed.description}" />
+      <meta property="og:title" th:content="${breed.name}" />
+      <meta property="og:description" th:content="${breed.description}" />
+      <meta property="og:image" th:if="${breed.imageUrl}" th:content="${breed.imageUrl}" />
+      <meta
+        property="og:url"
+        th:content="@{'/breeds/' + ${breed.id} + '/view'}"
+      />
+      <meta property="og:type" content="website" />
+    </th:block>
   </head>
   <section class="max-w-xl mx-auto bg-white shadow rounded-lg p-6">
     <div class="flex flex-col items-center">

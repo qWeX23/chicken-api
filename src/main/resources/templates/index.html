@@ -1,10 +1,13 @@
 <!DOCTYPE html>
 <html
   xmlns:th="http://www.thymeleaf.org"
-  th:replace="~{layout :: layout(~{::title}, ~{::section})}"
+  th:replace="~{layout :: layout(~{::title}, ~{::section}, ~{::meta})}"
 >
   <head>
     <title>🐔Chicken API🌐</title>
+    <th:block th:fragment="meta">
+      <meta name="description" content="Welcome to the Chicken API home page." />
+    </th:block>
   </head>
   <section class="flex items-center justify-center min-h-screen">
     <div class="bg-white shadow-lg rounded-lg p-10 text-center">
