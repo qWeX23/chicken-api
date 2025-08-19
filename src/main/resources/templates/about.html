@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html
+  xmlns:th="http://www.thymeleaf.org"
+  th:replace="~{layout :: layout(~{::title}, ~{::section})}"
+>
+  <head>
+    <title>About / Contribute</title>
+  </head>
+  <section class="max-w-2xl mx-auto">
+    <h1 class="text-3xl font-bold mb-6 text-yellow-700 text-center">
+      About / Contribute
+    </h1>
+    <p class="mb-4 text-gray-700">
+      Howdy, I'm Ben, welcome to chicken-api 🐔🌐 I wanted to make a fun project
+      to host everything chicken. I want this to grow into the de facto standard
+      for chicken-related data. If you have a chance please add a breed or your
+      own chicken! Contributions are welcome to the code too, feel free to
+      submit a pull request!
+    </p>
+    <h2 class="text-2xl font-semibold mb-2">How to Submit Data</h2>
+    <p class="mb-4 text-gray-700">
+      To add a new chicken breed, please make a post request to /api/v1/breeds.
+      We will review and add to the production database. To add new features or
+      requests, please open an issue on our GitHub repository.
+    </p>
+    <div class="mt-6 text-center">
+      <script
+        type="text/javascript"
+        src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js"
+        data-name="bmc-button"
+        data-slug="qwex"
+        data-color="#FF5F5F"
+        data-emoji="🐔"
+        data-font="Arial"
+        data-text="Support the Flock"
+        data-outline-color="#000000"
+        data-font-color="#ffffff"
+        data-coffee-color="#FFDD00"
+      ></script>
+    </div>
+  </section>
+</html>
