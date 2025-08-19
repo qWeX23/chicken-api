@@ -4,16 +4,16 @@
   th:replace="~{layout :: layout(~{::title}, ~{::section})}"
 >
   <head>
-    <title>🐔Chicken API</title>
+    <title>🐔Chicken API🌐</title>
   </head>
   <section class="flex items-center justify-center min-h-screen">
     <div class="bg-white shadow-lg rounded-lg p-10 text-center">
-      <h1 class="text-3xl font-bold mb-4 text-yellow-700">🐔Chicken API</h1>
+      <h1 class="text-3xl font-bold mb-4 text-yellow-700">🐔Chicken API🌐</h1>
       <p class="mb-6 text-gray-700">
         Open-source chicken breed data, ready for your apps.
       </p>
       <pre class="bg-gray-100 p-4 rounded text-left mb-6">
-<code>curl https://chickenapi.com/api/v1/breeds</code>
+<code>curl -X GET "https://chickenapi.com/api/v1/breeds/"</code>
       </pre>
       <div class="flex flex-wrap justify-center gap-4">
         <a
