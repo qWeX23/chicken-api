@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
 import io.swagger.v3.oas.annotations.parameters.RequestBody as OpenApiRequestBody
 
 @RestController
@@ -56,7 +57,7 @@ class ChickenController(
         @PathVariable id: Int,
     ): EntityModel<Chicken> {
         val chickenById = repository.getChickenById(id)
-        chickenById ?: throw IllegalArgumentException("Chicken with ID $id not found")
+        chickenById ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Chicken with ID $id not found")
         return chickenById.let {
             val model = EntityModel.of(
                 Chicken(
