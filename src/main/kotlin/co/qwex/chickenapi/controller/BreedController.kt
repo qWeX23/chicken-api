@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
 import io.swagger.v3.oas.annotations.parameters.RequestBody as OpenApiRequestBody
 
 private val log = KotlinLogging.logger {}
@@ -119,7 +120,7 @@ class BreedController(
         log.info { "Fetching breed with ID $id" }
         val breed = breedRepository.getBreedById(id)
         log.info { "Fetched breed with ID $id: $breed" }
-        breed ?: throw IllegalArgumentException("Breed with ID $id not found")
+        breed ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Breed with ID $id not found")
         return breed.let {
             val model = EntityModel.of(
                 Breed(
