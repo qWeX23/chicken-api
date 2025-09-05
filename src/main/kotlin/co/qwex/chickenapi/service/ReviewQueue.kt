@@ -2,11 +2,13 @@ package co.qwex.chickenapi.service
 
 import com.google.api.services.sheets.v4.Sheets
 import com.google.api.services.sheets.v4.model.ValueRange
+import mu.KotlinLogging
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 
 private const val BREEDS_SHEET = "pending_breeds"
 private const val CHICKENS_SHEET = "pending_chickens"
+private val log = KotlinLogging.logger {}
 
 @Component
 class ReviewQueue(
@@ -17,6 +19,7 @@ class ReviewQueue(
     private val pendingChickens = mutableListOf<PendingChicken>()
 
     fun addBreed(breed: PendingBreed) {
+        log.debug { "Queueing breed for review: ${breed.name}" }
         pendingBreeds += breed
         val valueRange = ValueRange().setValues(
             listOf(
@@ -39,6 +42,7 @@ class ReviewQueue(
     }
 
     fun addChicken(chicken: PendingChicken) {
+        log.debug { "Queueing chicken for review: ${chicken.name}" }
         pendingChickens += chicken
         val valueRange = ValueRange().setValues(
             listOf(
