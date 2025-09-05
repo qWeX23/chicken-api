@@ -29,6 +29,16 @@ We welcome contributions of all kinds! Here are a few ways you can help:
 - **Suggest a New Breed or Chicken:** Have a favorite breed that's not in our database? Want to add your own chicken? We'd love to see your suggestions.
 - **Improve Documentation:** See a way to make our documentation clearer? We appreciate all documentation improvements.
 
+## Logging
+
+The application uses [kotlin-logging](https://github.com/MicroUtils/kotlin-logging) with Logback. Log messages include a `requestId` for correlation and are written in plain text locally and JSON in production.
+
+Adjust log levels in `application.properties` or via the `logging.level` system property, e.g.:
+
+```properties
+logging.level.co.qwex=DEBUG
+```
+
 ## Using the API
 
 The Chicken API is free and easy to use. Check out our [API Documentation](https://chickenapi.com/swagger-ui/index.html) to get started. We're excited to see what you build!
