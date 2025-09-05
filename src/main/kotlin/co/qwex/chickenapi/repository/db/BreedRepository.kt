@@ -6,10 +6,10 @@ import com.google.api.services.sheets.v4.Sheets
 import mu.KotlinLogging
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Repository
-private val log = KotlinLogging.logger {}
 private const val SHEET_NAME = "breeds"
 private const val MIN_COLUMN = "A"
 private const val MAX_COLUMN = "I"
+private val log = KotlinLogging.logger {}
 
 @Repository
 class GoogleSheetBreedRepository(
@@ -17,6 +17,7 @@ class GoogleSheetBreedRepository(
     @Value("\${google.sheets.db.spreadsheetId}") private val spreadsheetId: String,
 ) : BreedRepository {
     override fun getAllBreeds(): List<Breed> {
+        log.debug { "Fetching all breeds from sheet" }
         val response = sheets.spreadsheets().values()
             .get(
                 spreadsheetId,
@@ -28,7 +29,7 @@ class GoogleSheetBreedRepository(
             )
             .execute()
         val values = response.getValues() ?: return emptyList()
-        return values.drop(1).map { row ->
+        val breeds = values.drop(1).map { row ->
             Breed(
                 id = row[0]?.toString()?.toIntOrNull() ?: throw IllegalArgumentException("Invalid ID"),
                 name = row.getOrNull(1)?.toString() ?: "",
@@ -41,6 +42,8 @@ class GoogleSheetBreedRepository(
                 numEggs = row.getOrNull(8)?.toString()?.toIntOrNull(),
             )
         }
+        log.debug { "Fetched ${breeds.size} breeds" }
+        return breeds
     }
     override fun getBreedById(id: Int): Breed? {
         val response = sheets.spreadsheets().values()
