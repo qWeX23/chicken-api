@@ -7,61 +7,84 @@ import org.springframework.stereotype.Component
 
 private const val BREEDS_SHEET = "pending_breeds"
 private const val CHICKENS_SHEET = "pending_chickens"
+private const val BREED_UPDATES_SHEET = "pending_breed_updates"
 
 @Component
 class ReviewQueue(
     private val sheets: Sheets,
     @Value("\${google.sheets.db.spreadsheetId}") private val spreadsheetId: String,
 ) {
-    private val pendingBreeds = mutableListOf<PendingBreed>()
-    private val pendingChickens = mutableListOf<PendingChicken>()
-
     fun addBreed(breed: PendingBreed) {
-        pendingBreeds += breed
-        val valueRange = ValueRange().setValues(
+        appendRow(
+            BREEDS_SHEET,
             listOf(
-                listOf(
-                    breed.name,
-                    breed.origin,
-                    breed.eggColor,
-                    breed.eggSize,
-                    breed.eggNumber,
-                    breed.temperament,
-                    breed.description,
-                    breed.imageUrl,
-                ),
+                breed.name,
+                breed.origin,
+                breed.eggColor,
+                breed.eggSize,
+                breed.eggNumber,
+                breed.temperament,
+                breed.description,
+                breed.imageUrl,
             ),
         )
-        sheets.spreadsheets().values()
-            .append(spreadsheetId, "$BREEDS_SHEET!A1", valueRange)
-            .setValueInputOption("USER_ENTERED")
-            .execute()
+    }
+
+    fun addBreedUpdate(update: PendingBreedUpdate) {
+        appendRow(
+            BREED_UPDATES_SHEET,
+            listOf(
+                update.id,
+                update.name,
+                update.origin,
+                update.eggColor,
+                update.eggSize,
+                update.eggNumber,
+                update.temperament,
+                update.description,
+                update.imageUrl,
+            ),
+        )
     }
 
     fun addChicken(chicken: PendingChicken) {
-        pendingChickens += chicken
-        val valueRange = ValueRange().setValues(
+        appendRow(
+            CHICKENS_SHEET,
             listOf(
-                listOf(
-                    chicken.name,
-                    chicken.breedId,
-                    chicken.imageUrl,
-                ),
+                chicken.name,
+                chicken.breedId,
+                chicken.imageUrl,
             ),
         )
-        sheets.spreadsheets().values()
-            .append(spreadsheetId, "$CHICKENS_SHEET!A1", valueRange)
-            .setValueInputOption("USER_ENTERED")
-            .execute()
     }
 
-    fun getBreeds(): List<PendingBreed> = pendingBreeds.toList()
+    private fun appendRow(sheetName: String, row: List<Any?>) {
+        val valueRange = ValueRange()
+            .setMajorDimension("ROWS")
+            .setValues(listOf(row))
 
-    fun getChickens(): List<PendingChicken> = pendingChickens.toList()
+        sheets.spreadsheets().values()
+            .append(spreadsheetId, sheetName, valueRange)
+            .setValueInputOption("USER_ENTERED")
+            .setInsertDataOption("INSERT_ROWS")
+            .execute()
+    }
 }
 
 data class PendingBreed(
     val name: String,
+    val origin: String?,
+    val eggColor: String?,
+    val eggSize: String?,
+    val eggNumber: Int?,
+    val temperament: String?,
+    val description: String?,
+    val imageUrl: String?,
+)
+
+data class PendingBreedUpdate(
+    val id: Int = 0,
+    val name: String?,
     val origin: String?,
     val eggColor: String?,
     val eggSize: String?,
