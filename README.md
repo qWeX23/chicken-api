@@ -62,6 +62,17 @@ curl -X POST "https://chickenapi.com/api/v1/breeds/" \
 }'
 ```
 
+### Suggest Updates to an Existing Breed
+
+```bash
+curl -X PUT "https://chickenapi.com/api/v1/breeds/1" \
+-H "Content-Type: application/json" \
+-d '{
+  "name": "Improved Chicken",
+  "description": "Now even fluffier."
+}'
+```
+
 ### Get a Specific Chicken by ID
 
 ```bash

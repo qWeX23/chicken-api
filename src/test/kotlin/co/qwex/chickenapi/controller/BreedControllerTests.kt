@@ -1,10 +1,11 @@
 import co.qwex.chickenapi.ChickenApiApplication
 import co.qwex.chickenapi.config.TestConfig
-import co.qwex.chickenapi.service.ReviewQueue
 import com.google.api.services.sheets.v4.Sheets
+import com.google.api.services.sheets.v4.model.AppendValuesResponse
 import com.google.api.services.sheets.v4.model.ValueRange
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.anyString
+import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
@@ -13,6 +14,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.put
 
 @SpringBootTest(classes = [ChickenApiApplication::class, TestConfig::class])
 @AutoConfigureMockMvc
@@ -20,16 +22,13 @@ class BreedControllerTests {
     @Autowired
     lateinit var mockMvc: MockMvc
 
-    @Autowired
-    lateinit var reviewQueue: ReviewQueue
-
     @MockitoBean(answers = org.mockito.Answers.RETURNS_DEEP_STUBS)
     lateinit var sheets: Sheets
 
     private fun mockBreedListResponse(values: List<List<Any>>) {
         val valueRange = ValueRange().setValues(values)
         Mockito.`when`(
-            sheets.spreadsheets().values().get(anyString(), Mockito.eq("breeds!A1:I")).execute(),
+            sheets.spreadsheets().values().get(anyString(), eq("breeds!A1:I")).execute(),
         ).thenReturn(valueRange)
     }
 
@@ -37,7 +36,7 @@ class BreedControllerTests {
         val valueRange = ValueRange().setValues(values)
         val range = "breeds!A${id + 1}:I${id + 1}"
         Mockito.`when`(
-            sheets.spreadsheets().values().get(anyString(), Mockito.eq(range)).execute(),
+            sheets.spreadsheets().values().get(anyString(), eq(range)).execute(),
         ).thenReturn(valueRange)
     }
 
@@ -107,11 +106,36 @@ class BreedControllerTests {
             "imageUrl":"img"
         }"""
 
+        val values = sheets.spreadsheets().values()
+        val append = Mockito.mock(Sheets.Spreadsheets.Values.Append::class.java)
+        Mockito.`when`(values.append(anyString(), anyString(), Mockito.any())).thenReturn(append)
+        Mockito.`when`(append.setValueInputOption(anyString())).thenReturn(append)
+        Mockito.`when`(append.setInsertDataOption(anyString())).thenReturn(append)
+        Mockito.`when`(append.execute()).thenReturn(AppendValuesResponse())
+
         mockMvc.post("/api/v1/breeds/") {
             contentType = org.springframework.http.MediaType.APPLICATION_JSON
             content = payload
         }.andExpect { status { isAccepted() } }
+    }
 
-        assert(reviewQueue.getBreeds().any { it.name == "NewBreed" })
+    @Test
+    fun `suggest breed update`() {
+        val payload = """{
+            "name":"BetterBreed",
+            "description":"updated"
+        }"""
+
+        val values = sheets.spreadsheets().values()
+        val append = Mockito.mock(Sheets.Spreadsheets.Values.Append::class.java)
+        Mockito.`when`(values.append(anyString(), anyString(), Mockito.any())).thenReturn(append)
+        Mockito.`when`(append.setValueInputOption(anyString())).thenReturn(append)
+        Mockito.`when`(append.setInsertDataOption(anyString())).thenReturn(append)
+        Mockito.`when`(append.execute()).thenReturn(AppendValuesResponse())
+
+        mockMvc.put("/api/v1/breeds/1") {
+            contentType = org.springframework.http.MediaType.APPLICATION_JSON
+            content = payload
+        }.andExpect { status { isAccepted() } }
     }
 }

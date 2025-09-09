@@ -1,6 +1,7 @@
 package co.qwex.chickenapi.controller
 
 import co.qwex.chickenapi.service.PendingBreed
+import co.qwex.chickenapi.service.PendingBreedUpdate
 import co.qwex.chickenapi.service.ReviewQueue
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.ArraySchema
@@ -17,6 +18,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
@@ -137,6 +139,40 @@ class BreedController(
             model.add(linkTo(BreedController::class.java).slash(id).withSelfRel())
             model
         }
+    }
+
+    @Operation(
+        summary = "Suggest updates for a breed",
+        description = "Propose changes to an existing breed. Suggestions are added to a review queue.",
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "202", description = "Update accepted for review"),
+            ApiResponse(responseCode = "400", description = "Invalid breed data"),
+        ],
+    )
+    @PutMapping("{id}")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    fun suggestBreedUpdate(
+        @PathVariable id: Int,
+        @OpenApiRequestBody(
+            required = true,
+            description = "Suggested updates to the breed",
+            content = [
+                Content(
+                    mediaType = "application/json",
+                    schema = Schema(implementation = PendingBreedUpdate::class),
+                    examples = [
+                        ExampleObject(
+                            value = """{"name":"Silkie Deluxe","description":"Extra fluffy"}""",
+                        ),
+                    ],
+                ),
+            ],
+        )
+        @RequestBody update: PendingBreedUpdate,
+    ) {
+        reviewQueue.addBreedUpdate(update.copy(id = id))
     }
 
     @Operation(
