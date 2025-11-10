@@ -40,10 +40,7 @@ class RequestLoggingInterceptor(
             userAgent = request.getHeader("User-Agent"),
         )
 
-        runCatching { requestLoggingService.recordRequest(logEntry) }
-            .onFailure { throwable ->
-                logger.warn(throwable) { "Failed to submit request log entry" }
-            }
+        requestLoggingService.recordRequest(logEntry)
     }
 
     private fun buildFullPath(request: HttpServletRequest): String {
