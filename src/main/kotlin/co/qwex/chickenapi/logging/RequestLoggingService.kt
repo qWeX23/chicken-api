@@ -34,7 +34,7 @@ open class RequestLoggingService(
             )
 
             sheets.spreadsheets().values()
-                .append(spreadsheetId, "${'$'}sheetName!A1", valueRange)
+                .append(spreadsheetId, "'$sheetName'!A1:G1", valueRange)
                 .setValueInputOption("USER_ENTERED")
                 .execute()
         } catch (ex: Exception) {
