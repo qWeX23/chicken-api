@@ -9,9 +9,12 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
-private const val REQUEST_START_TIME_ATTRIBUTE = "co.qwex.chickenapi.logging.REQUEST_START_TIME"
-private val logger = KotlinLogging.logger {}
+private val log = KotlinLogging.logger {}
 
+/**
+ * Interceptor that captures request metadata and records it to Google Sheets asynchronously.
+ * Works in conjunction with RequestLoggingFilter which sets up the request ID.
+ */
 @Component
 class RequestLoggingInterceptor(
     private val requestLoggingService: RequestLoggingService,
@@ -38,6 +41,7 @@ class RequestLoggingInterceptor(
             durationMs = durationMs,
             clientIp = extractClientIp(request),
             userAgent = request.getHeader("User-Agent"),
+            requestId = request.getHeader(REQUEST_ID_HEADER),
         )
 
         requestLoggingService.recordRequest(logEntry)
@@ -48,12 +52,18 @@ class RequestLoggingInterceptor(
         return if (query.isNullOrBlank()) {
             request.requestURI
         } else {
-            "${'$'}{request.requestURI}?${'$'}query"
+            "${request.requestURI}?$query"
         }
     }
 
     private fun extractClientIp(request: HttpServletRequest): String? {
-        val header = request.getHeader("X-Forwarded-For")?.split(',')?.firstOrNull()?.trim()
+        val header = request.getHeader(X_FORWARDED_FOR_HEADER)?.split(',')?.firstOrNull()?.trim()
         return header?.takeIf { it.isNotBlank() } ?: request.remoteAddr
+    }
+
+    companion object {
+        private const val REQUEST_START_TIME_ATTRIBUTE = "co.qwex.chickenapi.logging.REQUEST_START_TIME"
+        private const val REQUEST_ID_HEADER = "X-Request-ID"
+        private const val X_FORWARDED_FOR_HEADER = "X-Forwarded-For"
     }
 }

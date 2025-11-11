@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
+    <conversionRule conversionWord="clr" converterClass="org.springframework.boot.logging.logback.ColorConverter" />
+    <conversionRule conversionWord="wex" converterClass="org.springframework.boot.logging.logback.WhitespaceThrowableProxyConverter" />
+    <conversionRule conversionWord="wEx" converterClass="org.springframework.boot.logging.logback.ExtendedWhitespaceThrowableProxyConverter" />
+
     <springProfile name="!prod">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder>
-                <pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSX} [%thread] %-5level %logger - %msg [%X{requestId}]%n</pattern>
+                <pattern>%clr(%d{yyyy-MM-dd'T'HH:mm:ss.SSSX}){faint} %clr([%thread]){magenta} %clr(%-5level){highlight} %clr(%logger{36}){cyan} %clr(-){faint} %msg %clr([%X{requestId}]){faint}%n</pattern>
             </encoder>
         </appender>
         <root level="INFO">

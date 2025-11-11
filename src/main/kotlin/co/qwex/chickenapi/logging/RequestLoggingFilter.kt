@@ -1,4 +1,4 @@
-package co.qwex.chickenapi.config
+package co.qwex.chickenapi.logging
 
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
@@ -11,6 +11,10 @@ import java.util.UUID
 
 private val log = KotlinLogging.logger {}
 
+/**
+ * Filter that generates and tracks request IDs for distributed tracing.
+ * Sets MDC context for structured logging and adds X-Request-ID header to responses.
+ */
 @Component
 class RequestLoggingFilter : OncePerRequestFilter() {
     override fun doFilterInternal(
@@ -18,8 +22,10 @@ class RequestLoggingFilter : OncePerRequestFilter() {
         response: HttpServletResponse,
         filterChain: FilterChain,
     ) {
-        val requestId = request.getHeader("X-Request-Id") ?: UUID.randomUUID().toString()
-        MDC.put("requestId", requestId)
+        val requestId = request.getHeader(REQUEST_ID_HEADER) ?: UUID.randomUUID().toString()
+        MDC.put(REQUEST_ID_MDC_KEY, requestId)
+        response.setHeader(REQUEST_ID_HEADER, requestId)
+
         val start = System.currentTimeMillis()
         log.info { "Incoming ${request.method} ${request.requestURI}" }
         try {
@@ -27,7 +33,12 @@ class RequestLoggingFilter : OncePerRequestFilter() {
         } finally {
             val duration = System.currentTimeMillis() - start
             log.info { "Completed ${request.method} ${request.requestURI} ${response.status} in ${duration}ms" }
-            MDC.remove("requestId")
+            MDC.remove(REQUEST_ID_MDC_KEY)
         }
+    }
+
+    companion object {
+        const val REQUEST_ID_HEADER = "X-Request-ID"
+        const val REQUEST_ID_MDC_KEY = "requestId"
     }
 }

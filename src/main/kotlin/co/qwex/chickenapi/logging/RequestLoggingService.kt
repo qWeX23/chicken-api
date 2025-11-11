@@ -8,8 +8,12 @@ import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Service
 
 private val log = KotlinLogging.logger {}
-private const val DEFAULT_REQUEST_LOG_SHEET = "request_logs"
 
+/**
+ * Service that asynchronously records request logs to Google Sheets.
+ * Each request is appended as a new row with timestamp, method, path, status, duration,
+ * client IP, user agent, and request ID.
+ */
 @Service
 open class RequestLoggingService(
     private val sheets: Sheets,
@@ -29,20 +33,29 @@ open class RequestLoggingService(
                         entry.durationMs,
                         entry.clientIp,
                         entry.userAgent,
+                        entry.requestId,
                     ),
                 ),
             )
 
             sheets.spreadsheets().values()
-                .append(spreadsheetId, "'$sheetName'!A1:G1", valueRange)
+                .append(spreadsheetId, "'$sheetName'!$SHEET_RANGE", valueRange)
                 .setValueInputOption("USER_ENTERED")
                 .execute()
         } catch (ex: Exception) {
             log.warn(ex) { "Failed to append request log entry" }
         }
     }
+
+    companion object {
+        private const val DEFAULT_REQUEST_LOG_SHEET = "request_logs"
+        private const val SHEET_RANGE = "A1:H1"
+    }
 }
 
+/**
+ * Data class representing a single request log entry.
+ */
 data class RequestLogEntry(
     val timestamp: String,
     val method: String,
@@ -51,4 +64,5 @@ data class RequestLogEntry(
     val durationMs: Long,
     val clientIp: String?,
     val userAgent: String?,
+    val requestId: String?,
 )
