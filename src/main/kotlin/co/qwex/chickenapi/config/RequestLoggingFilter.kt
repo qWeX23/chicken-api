@@ -21,7 +21,7 @@ class RequestLoggingFilter : OncePerRequestFilter() {
         val requestId = request.getHeader("X-Request-ID") ?: UUID.randomUUID().toString()
         MDC.put("requestId", requestId)
         response.setHeader("X-Request-ID", requestId)
-        
+
         val start = System.currentTimeMillis()
         log.info { "Incoming ${request.method} ${request.requestURI}" }
         try {
