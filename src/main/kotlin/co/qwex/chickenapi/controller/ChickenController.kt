@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.media.ExampleObject
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
+import mu.KotlinLogging
 import org.springframework.hateoas.EntityModel
 import org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo
 import org.springframework.http.HttpStatus
@@ -22,12 +23,15 @@ import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 import io.swagger.v3.oas.annotations.parameters.RequestBody as OpenApiRequestBody
 
+private val log = KotlinLogging.logger {}
+
 @RestController
 @RequestMapping("api/v1/chickens")
 class ChickenController(
     val repository: ChickenRepository,
     private val reviewQueue: ReviewQueue,
 ) {
+
     @Operation(
         summary = "Get chicken by ID",
         description = "Retrieve a single chicken by its identifier.",
@@ -56,8 +60,10 @@ class ChickenController(
     fun getChickenById(
         @PathVariable id: Int,
     ): EntityModel<Chicken> {
+        log.info { "Fetching chicken with ID $id" }
         val chickenById = repository.getChickenById(id)
-        chickenById ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Chicken with ID $id not found")
+        chickenById
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Chicken with ID $id not found")
         return chickenById.let {
             val model = EntityModel.of(
                 Chicken(
@@ -103,6 +109,7 @@ class ChickenController(
         )
         @RequestBody chicken: PendingChicken,
     ) {
+        log.info { "Submitting chicken for review: ${chicken.name}" }
         reviewQueue.addChicken(chicken)
     }
 }
