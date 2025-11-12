@@ -8,3 +8,5 @@ When contributing changes:
 - **Run `./gradlew test --no-daemon`** to ensure all tests pass.
 
 Follow these steps for every change to keep the codebase consistent and working.
+
+Logging: use mu.KotlinLogging `private val log = KotlinLogging.logger {}`
