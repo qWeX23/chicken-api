@@ -59,3 +59,7 @@ activate/
 
 ### OpenAI ###
 openai_api_key.txt
+
+### Local Spring Boot Profile ###
+application-local.properties
+agent-traces.log
