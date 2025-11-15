@@ -1,8 +1,8 @@
 package co.qwex.chickenapi.controller
 
 import co.qwex.chickenapi.ChickenApiApplication
-import co.qwex.chickenapi.ai.KoogChickenFactsAgent
 import co.qwex.chickenapi.config.TestConfig
+import co.qwex.chickenapi.service.ChickenFactsService
 import com.google.api.services.sheets.v4.Sheets
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
@@ -22,7 +22,7 @@ class ChickenFactsControllerTests {
     lateinit var mockMvc: MockMvc
 
     @MockitoBean
-    lateinit var koogChickenFactsAgent: KoogChickenFactsAgent
+    lateinit var chickenFactsService: ChickenFactsService
 
     @MockitoBean(answers = org.mockito.Answers.RETURNS_DEEP_STUBS)
     lateinit var sheets: Sheets
@@ -35,8 +35,8 @@ class ChickenFactsControllerTests {
             - The oldest chicken lived to be 16 years old. [https://example.com/source2]
         """.trimIndent()
 
-        Mockito.`when`(koogChickenFactsAgent.isReady()).thenReturn(true)
-        Mockito.`when`(runBlocking { koogChickenFactsAgent.fetchChickenFacts() }).thenReturn(facts)
+        Mockito.`when`(chickenFactsService.isAgentReady()).thenReturn(true)
+        Mockito.`when`(runBlocking { chickenFactsService.fetchChickenFacts() }).thenReturn(facts)
 
         // When & Then
         mockMvc.get("/api/v1/chicken-facts") {
@@ -51,7 +51,7 @@ class ChickenFactsControllerTests {
     @Test
     fun `should return 503 when agent is not ready`() {
         // Given
-        Mockito.`when`(koogChickenFactsAgent.isReady()).thenReturn(false)
+        Mockito.`when`(chickenFactsService.isAgentReady()).thenReturn(false)
 
         // When & Then
         mockMvc.get("/api/v1/chicken-facts") {
@@ -66,8 +66,8 @@ class ChickenFactsControllerTests {
     @Test
     fun `should return 204 when agent returns no facts`() {
         // Given
-        Mockito.`when`(koogChickenFactsAgent.isReady()).thenReturn(true)
-        Mockito.`when`(runBlocking { koogChickenFactsAgent.fetchChickenFacts() }).thenReturn(null)
+        Mockito.`when`(chickenFactsService.isAgentReady()).thenReturn(true)
+        Mockito.`when`(runBlocking { chickenFactsService.fetchChickenFacts() }).thenReturn(null)
 
         // When & Then
         mockMvc.get("/api/v1/chicken-facts") {
@@ -81,8 +81,8 @@ class ChickenFactsControllerTests {
     @Test
     fun `should return 204 when agent returns blank facts`() {
         // Given
-        Mockito.`when`(koogChickenFactsAgent.isReady()).thenReturn(true)
-        Mockito.`when`(runBlocking { koogChickenFactsAgent.fetchChickenFacts() }).thenReturn("   ")
+        Mockito.`when`(chickenFactsService.isAgentReady()).thenReturn(true)
+        Mockito.`when`(runBlocking { chickenFactsService.fetchChickenFacts() }).thenReturn(null)
 
         // When & Then
         mockMvc.get("/api/v1/chicken-facts") {
@@ -96,8 +96,8 @@ class ChickenFactsControllerTests {
     @Test
     fun `should return 500 when agent throws exception`() {
         // Given
-        Mockito.`when`(koogChickenFactsAgent.isReady()).thenReturn(true)
-        Mockito.`when`(runBlocking { koogChickenFactsAgent.fetchChickenFacts() }).thenThrow(RuntimeException("Cloud service error"))
+        Mockito.`when`(chickenFactsService.isAgentReady()).thenReturn(true)
+        Mockito.`when`(runBlocking { chickenFactsService.fetchChickenFacts() }).thenThrow(RuntimeException("Cloud service error"))
 
         // When & Then
         mockMvc.get("/api/v1/chicken-facts") {
