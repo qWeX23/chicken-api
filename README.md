@@ -89,3 +89,13 @@ curl -X POST "https://chickenapi.com/api/v1/chickens" \
   "imageUrl": "http://example.com/cluck.jpg"
 }'
 ```
+
+### Get AI-Generated Chicken Facts
+
+Get interesting, recent chicken facts powered by our cloud AI agent:
+
+```bash
+curl -X GET "https://chickenapi.com/api/v1/chicken-facts"
+```
+
+The endpoint uses a cloud-based AI agent (Ollama Cloud via Koog) to research and return fascinating chicken facts with source citations. The facts are formatted as markdown bullet points.
