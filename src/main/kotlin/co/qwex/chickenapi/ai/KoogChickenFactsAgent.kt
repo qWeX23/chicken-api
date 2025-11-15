@@ -2,8 +2,6 @@ package co.qwex.chickenapi.ai
 
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
-import ai.koog.agents.ext.agent.reActStrategy
-import ai.koog.agents.ext.agent.chatAgentStrategy
 import ai.koog.agents.core.tools.SimpleTool
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.core.tools.annotations.LLMDescription
@@ -75,20 +73,12 @@ class KoogChickenFactsAgent(
                 ollamaHttpClient = llmHttpClient
                 toolsHttpClient = webToolClient
 
-                val webSearchTool = WebSearchTool(
-                    httpClient = webToolClient,
-                    baseUrl = sanitizedBaseUrl,
-                    defaultMaxResults = properties.webSearchMaxResults,
+                promptExecutor = SingleLLMPromptExecutor(
+                    OllamaClient(
+                        baseUrl = sanitizedBaseUrl,
+                        baseClient = llmHttpClient,
+                    ),
                 )
-                val webFetchTool = WebFetchTool(
-                    httpClient = webToolClient,
-                    baseUrl = sanitizedBaseUrl,
-                )
-
-                toolRegistry = ToolRegistry {
-                    tool(webSearchTool)
-                    tool(webFetchTool)
-                }
 
                 model = LLModel(
                     provider = LLMProvider.Ollama,
@@ -101,28 +91,48 @@ class KoogChickenFactsAgent(
                     contextLength = 131_072,
                 )
 
+                val webSearchTool = WebSearchTool(
+                    httpClient = webToolClient,
+                    baseUrl = sanitizedBaseUrl,
+                    defaultMaxResults = properties.webSearchMaxResults,
+                    promptExecutor = promptExecutor,
+                    model = model,
+                )
+                val webFetchTool = WebFetchTool(
+                    httpClient = webToolClient,
+                    baseUrl = sanitizedBaseUrl,
+                    promptExecutor = promptExecutor,
+                    model = model,
+                )
+
+                toolRegistry = ToolRegistry {
+                    tool(webSearchTool)
+                    tool(webFetchTool)
+                }
+
                 agentConfig = AIAgentConfig(
                     prompt = prompt("chicken_facts_prompt") {
                         system(
-                            "You are Koog's chicken fact researcher. " +
-                                "Always call the available web_search tool before responding, " +
-                                "use web_fetch to capture supporting content, and return a short markdown bullet list " +
-                                "that cites the URLs you used. You must use the tools unless you are 100% sure of the answer. " +
-                                "CRITICAL: Do NOT output planning text, thoughts, or intentions. Only use tools or provide the final answer. " +
-                                "Never respond with things like 'I'm ready to start', 'Ok I will do this now', 'My plan is', or 'I will'. " +
-                                "If you are not using a tool, the output will be considered your final answer. " +
-                                "Make sure to complete the task fully."
-                        )
+                                   """
+        You are an expert chicken fact researcher.
+
+- When you need new information, call the web_search tool.
+- Optionally use web_fetch to pull supporting content for specific URLs.
+- You may call at most 3 tools total (any combination of web_search and web_fetch).
+- After you have information from 2–4 good sources, you MUST STOP calling tools
+  and produce the final answer.
+- Final answer must be a SHORT markdown bullet list,
+  each bullet with:
+  - a cool, recent fact about chickens, and
+  - a source URL you actually used.
+
+Do NOT ever call tools again after you have started writing the final answer.
+
+        """.trimIndent()
+         )
                     },
                     model = model!!,
                     maxAgentIterations = properties.maxAgentIterations,
-                )
-
-                promptExecutor = SingleLLMPromptExecutor(
-                    OllamaClient(
-                        baseUrl = sanitizedBaseUrl,
-                        baseClient = llmHttpClient,
-                    ),
                 )
 
                 log.info {
@@ -150,7 +160,9 @@ class KoogChickenFactsAgent(
             val agent =
                 AIAgent(
                     promptExecutor = executor,
-                    strategy = chatAgentStrategy(),
+                    strategy = chickenResearchStrategy(
+                        maxToolCalls = 4,
+                    ),
                     toolRegistry = registry,
                     agentConfig = config,
                 ) {
@@ -194,7 +206,7 @@ class KoogChickenFactsAgent(
                         addMessageProcessor(TraceFeatureMessageLogWriter(OshaiKotlinLogging.logger {}))
                         addMessageProcessor(TraceFeatureMessageFileWriter(
                             sinkOpener = { path -> SystemFileSystem.sink(path).buffered() },
-                            targetPath = Path("agent-traces.log")
+                            targetPath = Path("agenttraces/agent-traces-${System.currentTimeMillis()}.log")
                         ))
                     }
                 }
@@ -224,12 +236,15 @@ class KoogChickenFactsAgent(
 }
 
 /**
- * Web search tool that queries Ollama's web search API.
+ * Web search tool that queries Ollama's web search API and uses a one-shot
+ * Koog agent to summarize the search results to prevent context overflow.
  */
 class WebSearchTool(
     private val httpClient: HttpClient?,
     private val baseUrl: String,
     private val defaultMaxResults: Int,
+    private val promptExecutor: SingleLLMPromptExecutor?,
+    private val model: LLModel?,
 ) : SimpleTool<WebSearchTool.Args>() {
     private val log = KotlinLogging.logger {}
     private val json = Json { ignoreUnknownKeys = true }
@@ -238,7 +253,7 @@ class WebSearchTool(
     data class Args(
         @property:LLMDescription("The search query to find information on the web")
         val query: String,
-        @property:LLMDescription("Optional: number of results to return (1-10, default is 5)")
+        @property:LLMDescription("Optional: number of results to return (1-5, default is 1)")
         val maxResults: Int? = null,
     )
 
@@ -248,7 +263,9 @@ class WebSearchTool(
 
     override suspend fun doExecute(args: Args): String {
         val client = httpClient ?: throw IllegalStateException("Web search client not configured.")
-        val resolvedMax = (args.maxResults ?: defaultMaxResults).coerceIn(1, 10)
+        val executor = promptExecutor ?: throw IllegalStateException("Prompt executor not configured.")
+        val llmModel = model ?: throw IllegalStateException("Model not configured.")
+        val resolvedMax = (args.maxResults ?: defaultMaxResults).coerceIn(1, 1)
 
         log.info { "Executing web_search with query: '${args.query}', maxResults: $resolvedMax" }
 
@@ -265,16 +282,58 @@ class WebSearchTool(
 
         val result: WebSearchResponse = response.body()
         log.info { "web_search returned ${result.results.size} results" }
-        return json.encodeToString(result)
+
+        // Summarize each result individually
+        val summarizedResults = result.results.mapIndexed { index, searchResult ->
+            val resultText = buildString {
+                appendLine("Title: ${searchResult.title ?: "No title"}")
+                appendLine("URL: ${searchResult.url ?: "No URL"}")
+                appendLine("Content: ${searchResult.content ?: "No content"}")
+            }
+
+            val summarizationPrompt = prompt("search_result_summarizer_$index") {
+                system(
+                    "You are a search result summarizer. Extract the key information from this single search result. " +
+                        "Keep it concise (2-3 sentences max). " +
+                        "Include the URL. " +
+                        "Focus on facts relevant to the search query: ${args.query}"
+                )
+                user(resultText)
+            }
+
+            try {
+                log.info { "Summarizing result ${index + 1} for query: '${args.query}'" }
+                val summary = executor.execute(summarizationPrompt, llmModel)
+                summary.toString()
+            } catch (ex: Exception) {
+                log.error(ex) { "Failed to summarize result ${index + 1} for '${args.query}'" }
+                // Fallback to truncated content
+                "Title: ${searchResult.title}\nURL: ${searchResult.url}\nSummary: ${searchResult.content?.take(200)}"
+            }
+        }
+
+        // Combine all summarized results
+        return buildString {
+            appendLine("Search results for: ${args.query}")
+            appendLine()
+            summarizedResults.forEachIndexed { index, summary ->
+                appendLine("Result ${index + 1}:")
+                appendLine(summary)
+                appendLine()
+            }
+        }
     }
 }
 
 /**
- * Web fetch tool that retrieves full content from a URL.
+ * Web fetch tool that retrieves full content from a URL and uses a one-shot
+ * Koog agent to summarize and distill facts from the page.
  */
 class WebFetchTool(
     private val httpClient: HttpClient?,
     private val baseUrl: String,
+    private val promptExecutor: SingleLLMPromptExecutor?,
+    private val model: LLModel?,
 ) : SimpleTool<WebFetchTool.Args>() {
     private val log = KotlinLogging.logger {}
     private val json = Json { ignoreUnknownKeys = true }
@@ -287,13 +346,16 @@ class WebFetchTool(
 
     override val argsSerializer = Args.serializer()
     override val name = "web_fetch"
-    override val description = "Fetches the full content of a web page by URL. Use this to read detailed content from URLs found in web search results."
+    override val description = "Fetches the full content of a web page by URL and returns a concise summary with key facts. Use this to extract information from URLs found in web search results."
 
     override suspend fun doExecute(args: Args): String {
         val client = httpClient ?: throw IllegalStateException("Web fetch client not configured.")
+        val executor = promptExecutor ?: throw IllegalStateException("Prompt executor not configured.")
+        val llmModel = model ?: throw IllegalStateException("Model not configured.")
 
         log.info { "Executing web_fetch for URL: ${args.url}" }
 
+        // Fetch the raw web content
         val response =
             client.post("$baseUrl/api/web_fetch") {
                 setBody(WebFetchRequest(url = args.url))
@@ -306,8 +368,35 @@ class WebFetchTool(
         }
 
         val result: WebFetchResponse = response.body()
-        log.info { "web_fetch completed for ${args.url}" }
-        return json.encodeToString(result)
+        log.info { "web_fetch received content from ${args.url}, title: ${result.title}" }
+
+        // Create a one-shot summarization prompt
+        val summarizationPrompt = prompt("web_page_summarizer") {
+            system(
+                "You are a web content summarizer. Extract and distill the key facts from the provided web page content. " +
+                    "Focus on factual information and important details. " +
+                    "Return a concise bullet-point summary. " +
+                    "Include the source URL in your summary."
+            )
+            user(
+                "URL: ${args.url}\n" +
+                    "Title: ${result.title ?: "Unknown"}\n\n" +
+                    "Content:\n${result.content ?: "No content available"}\n\n" +
+                    "Please summarize the key facts from this web page."
+            )
+        }
+
+        // Execute the one-shot summarization
+        return try {
+            log.info { "Summarizing content from ${args.url} with LLM" }
+            val summary = executor.execute(summarizationPrompt, llmModel)
+            log.info { "Successfully summarized content from ${args.url}" }
+            summary.toString()
+        } catch (ex: Exception) {
+            log.error(ex) { "Failed to summarize web content from ${args.url}" }
+            // Fallback to raw content if summarization fails
+            json.encodeToString(result)
+        }
     }
 }
 

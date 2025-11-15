@@ -14,7 +14,7 @@ class ScheduledTaskService(
 
     private val log = KotlinLogging.logger {}
 
-    @Scheduled(fixedRate = 60000) // 1 minute in milliseconds
+    @Scheduled(fixedRate = 600000) // 10 minutes in milliseconds
     fun performScheduledTask() {
         log.info { "Scheduled task started at: ${LocalDateTime.now()}" }
         if (!koogChickenFactsAgent.isReady()) {

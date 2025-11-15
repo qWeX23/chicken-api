@@ -12,7 +12,7 @@ data class KoogAgentProperties(
     val enabled: Boolean = true,
     val baseUrl: String = "https://ollama.com",
     val model: String = "gpt-oss:120b",
-    val prompt: String = "Find the coolest new facts about chickens and cite your sources. Format your response as a markdown bullet list.",
+    val prompt: String = "Find the coolest new fun fact about chickens and cite your sources. Format your response as a markdown. stay on topic about chickens. only return one fact.",
     val apiKey: String? = null,
     val webSearchMaxResults: Int = 3,
     val maxAgentIterations: Int = 100,
