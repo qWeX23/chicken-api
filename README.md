@@ -29,7 +29,38 @@ We welcome contributions of all kinds! Here are a few ways you can help:
 - **Suggest a New Breed or Chicken:** Have a favorite breed that's not in our database? Want to add your own chicken? We'd love to see your suggestions.
 - **Improve Documentation:** See a way to make our documentation clearer? We appreciate all documentation improvements.
 
-## Logging
+## Local Development
+
+### Observability with Langfuse
+
+The Chicken API integrates with [Langfuse](https://langfuse.com) for OpenTelemetry tracing of the Koog AI agent. To run Langfuse locally:
+
+1. Navigate to the Langfuse setup directory:
+   ```bash
+   cd scripts/langfuse
+   ```
+
+2. Generate secrets and start Langfuse:
+   ```bash
+   ./generate-secrets.sh
+   docker compose up -d
+   ```
+
+3. Access the Langfuse UI at http://localhost:3000 and create your API keys
+
+4. Configure the Chicken API with your Langfuse credentials:
+   ```bash
+   export LANGFUSE_HOST=http://localhost:3000
+   export LANGFUSE_PUBLIC_KEY=pk-lf-your-key
+   export LANGFUSE_SECRET_KEY=sk-lf-your-secret
+   ```
+
+For detailed instructions, see:
+- [Langfuse Setup Guide](scripts/langfuse/README.md)
+- [Chicken API Integration Guide](scripts/langfuse/CHICKEN_API_INTEGRATION.md)
+- [Setup Checklist](scripts/langfuse/SETUP_CHECKLIST.md)
+
+### Logging
 
 The application uses [kotlin-logging](https://github.com/MicroUtils/kotlin-logging) with Logback. Log messages include a `requestId` for correlation and are written in plain text locally and JSON in production.
 
