@@ -12,6 +12,16 @@ import java.time.Instant
 private const val CHICKEN_FACTS_RANGE = "chicken_facts!A1:H1"
 private const val CHICKEN_FACTS_DATA_RANGE = "chicken_facts!A:H"
 
+// Column indices for the chicken_facts sheet
+private const val COL_RUN_ID = 0
+private const val COL_STARTED_AT = 1
+private const val COL_COMPLETED_AT = 2
+private const val COL_DURATION_MILLIS = 3
+private const val COL_OUTCOME = 4
+private const val COL_FACTS_MARKDOWN_LENGTH = 5
+private const val COL_FACTS_MARKDOWN = 6
+private const val COL_ERROR_MESSAGE = 7
+
 @Repository
 class ChickenFactsSheetRepository(
     private val sheets: Sheets,
@@ -71,22 +81,22 @@ class ChickenFactsSheetRepository(
     }
 
     private fun mapRowToRecord(row: List<Any>): ChickenFactsRecord? {
-        val runId = row.stringAt(0) ?: return null
+        val runId = row.stringAt(COL_RUN_ID) ?: return null
         if (runId.equals("runId", ignoreCase = true)) {
             return null
         }
 
-        val startedAt = row.instantAt(1) ?: return null
-        val completedAt = row.instantAt(2) ?: return null
-        val durationMillis = row.longAt(3) ?: 0L
-        val outcomeValue = row.stringAt(4) ?: return null
+        val startedAt = row.instantAt(COL_STARTED_AT) ?: return null
+        val completedAt = row.instantAt(COL_COMPLETED_AT) ?: return null
+        val durationMillis = row.longAt(COL_DURATION_MILLIS) ?: 0L
+        val outcomeValue = row.stringAt(COL_OUTCOME) ?: return null
         val outcome = runCatching { AgentRunOutcome.valueOf(outcomeValue) }
             .onFailure { log.warn(it) { "Unknown AgentRunOutcome '$outcomeValue' for run $runId" } }
             .getOrNull()
             ?: return null
 
-        val factsMarkdown = row.stringAt(6, trim = false)
-        val errorMessage = row.stringAt(7, trim = false)
+        val factsMarkdown = row.stringAt(COL_FACTS_MARKDOWN, trim = false)
+        val errorMessage = row.stringAt(COL_ERROR_MESSAGE, trim = false)
 
         return ChickenFactsRecord(
             runId = runId,
