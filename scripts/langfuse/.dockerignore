@@ -1,0 +1,10 @@
+# Exclude sensitive and unnecessary files from Docker context
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+README.md
+CHICKEN_API_INTEGRATION.md
+*.backup
+*.log

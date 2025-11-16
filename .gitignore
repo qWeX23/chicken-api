@@ -65,3 +65,7 @@ application-local.properties
 agent-traces.log
 agent-traces-*.log
 /agenttraces
+
+### Langfuse Local Development ###
+scripts/langfuse/.env
+scripts/langfuse/.env.backup
