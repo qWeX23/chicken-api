@@ -8,7 +8,7 @@ import org.springframework.ui.Model
 import org.springframework.web.bind.annotation.GetMapping
 
 private val log = KotlinLogging.logger {}
-private val markdownLinkRegex = Regex("\\[([^\\]]+)]\\((https?://[^)]+)\\)")
+private val markdownLinkRegex = Regex("\\[([^\\]]+?)\\]\\((https?://[^)]+)\\)")
 private val urlRegex = Regex("https?://\\S+")
 private val sourceMarkerRegex = Regex("(?i)(?:\\*+|_+)?sources?[:\\-]")
 private val fallbackDailyFact = DailyFact(
