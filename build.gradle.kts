@@ -1,9 +1,10 @@
 plugins {
-    kotlin("jvm") version "1.9.25"
-    kotlin("plugin.spring") version "1.9.25"
+    kotlin("jvm") version "2.1.10"
+    kotlin("plugin.spring") version "2.1.10"
+    kotlin("plugin.serialization") version "2.1.10"
     id("org.springframework.boot") version "3.4.5"
     id("io.spring.dependency-management") version "1.1.7"
-    id("com.diffplug.spotless") version "6.21.0"
+    id("com.diffplug.spotless") version "6.25.0"
 }
 
 group = "co.qwex"
@@ -25,7 +26,28 @@ repositories {
     mavenCentral()
 }
 
+val serializationVersion = "1.8.1"
+
+configurations.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "org.jetbrains.kotlinx" && requested.name.startsWith("kotlinx-coroutines")) {
+            useVersion("1.9.0")
+            because("Koog agents require CoroutineDispatcher.limitedParallelism which ships in coroutines 1.9")
+        } else if (requested.group == "org.jetbrains.kotlinx" && requested.name.startsWith("kotlinx-serialization")) {
+            useVersion(serializationVersion)
+            because("Koog agents are built against kotlinx-serialization 1.8.x")
+        }
+    }
+}
+
 dependencies {
+    implementation("ai.koog:koog-agents:0.5.2")
+    implementation("com.squareup.okio:okio:3.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:$serializationVersion")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:$serializationVersion")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+    implementation("io.ktor:ktor-client-cio:3.3.0")
+    implementation("io.ktor:ktor-client-content-negotiation:3.3.0")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-web")
@@ -54,7 +76,7 @@ dependencies {
 
 kotlin {
     compilerOptions {
-        freeCompilerArgs.addAll("-Xjsr305=strict")
+        freeCompilerArgs.add("-Xjsr305=strict")
     }
 }
 
@@ -62,13 +84,22 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
+tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
+    environment("GOOGLE_APPLICATION_CREDENTIALS", "/Users/benjaminchurchill/Github/chicken-api/chicken-api-460112-52ea6363b3cd.json")
+}
+
 spotless {
     kotlin {
         target("src/**/*.kt")
-        ktlint("0.50.0") // Specify the KtLint version
+        targetExclude("build/**")
+        trimTrailingWhitespace()
+        indentWithSpaces()
+        endWithNewline()
     }
     kotlinGradle {
         target("*.gradle.kts")
-        ktlint()
+        trimTrailingWhitespace()
+        indentWithSpaces()
+        endWithNewline()
     }
 }
