@@ -21,7 +21,7 @@
         <p class="text-slate-600">Browse the catalog and jump into any breed for full stats, care notes, and more photos.</p>
       </header>
 
-      <div class="space-y-4 sm:space-y-0 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:gap-4" th:if="${#lists.isEmpty(breeds)}">
+      <div class="space-y-4" th:if="${#lists.isEmpty(breeds)}">
         <article class="p-6 text-center bg-white rounded-xl border border-dashed border-slate-300 text-slate-500">
           <p>No breeds available right now. Check back soon!</p>
         </article>
