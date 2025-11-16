@@ -13,31 +13,53 @@
       <meta property="og:type" content="website" />
     </th:block>
   </head>
-  <section>
-    <h1 class="text-3xl font-bold mb-6 text-yellow-700 text-center">
-      Chicken Breeds
-    </h1>
-    <table class="min-w-full divide-y divide-gray-200 bg-white shadow rounded-lg">
-      <thead class="bg-gray-100">
-        <tr>
-          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image</th>
-          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-          <th class="px-6 py-3"></th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-gray-200" th:each="breed : ${breeds}">
-        <tr>
-          <td class="px-6 py-4" th:if="${breed.imageUrl}">
-            <img th:src="${breed.imageUrl}" alt="breed image" class="h-16 w-16 rounded object-cover" />
-          </td>
-          <td class="px-6 py-4" th:text="${breed.name}"></td>
-          <td class="px-6 py-4 text-right">
+  <main class="min-h-screen bg-slate-50">
+    <section class="max-w-4xl mx-auto px-4 py-8 space-y-8">
+      <header class="text-center space-y-2">
+        <p class="text-sm uppercase font-semibold tracking-wide text-amber-600">Breed library</p>
+        <h1 class="text-3xl font-bold text-slate-900">Chicken Breeds</h1>
+        <p class="text-slate-600">Browse the catalog and jump into any breed for full stats, care notes, and more photos.</p>
+      </header>
+
+      <div class="space-y-4" th:if="${#lists.isEmpty(breeds)}">
+        <article class="p-6 text-center bg-white rounded-xl border border-dashed border-slate-300 text-slate-500">
+          <p>No breeds available right now. Check back soon!</p>
+        </article>
+      </div>
+
+      <div class="space-y-4 sm:space-y-0 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:gap-4" th:if="${!#lists.isEmpty(breeds)}">
+        <article
+          class="flex flex-col gap-4 p-4 bg-white rounded-xl shadow-sm border border-slate-200 h-full"
+          th:each="breed : ${breeds}">
+          <div class="flex flex-col items-center gap-4 text-center">
+            <div class="w-full max-w-[180px] aspect-[4/3] rounded-lg bg-slate-100 overflow-hidden">
+              <img
+                th:if="${breed.imageUrl}"
+                th:src="${breed.imageUrl}"
+                alt="breed image"
+                class="w-full h-full object-contain"
+              />
+              <div
+                th:if="${breed.imageUrl == null}"
+                class="w-full h-full flex items-center justify-center text-slate-400 text-sm"
+              >
+                No image
+              </div>
+            </div>
+
+            <h2 class="text-xl font-semibold text-slate-900" th:text="${breed.name}"></h2>
+          </div>
+
+          <div class="pt-4">
             <a
-              class="text-blue-600 hover:underline"
-              th:href="@{'/breeds/' + ${breed.id} + '/view'}">View</a>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </section>
+              class="inline-flex w-full justify-center px-4 py-2 text-sm font-semibold text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition"
+              th:href="@{'/breeds/' + ${breed.id} + '/view'}"
+            >
+              View
+            </a>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
 </html>

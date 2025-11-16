@@ -10,6 +10,9 @@
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   </head>
   <body class="bg-gray-50 min-h-screen">
-    <div class="container mx-auto p-6" th:replace="${content}"></div>
+    <div class="container mx-auto p-6 space-y-8">
+      <th:block th:replace="~{fragments/nav :: primaryNav}"></th:block>
+      <div th:replace="${content}"></div>
+    </div>
   </body>
 </html>
