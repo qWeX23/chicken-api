@@ -39,7 +39,7 @@ class ChickenFactsSheetRepositoryTests {
         val valueRangeCaptor = ArgumentCaptor.forClass(ValueRange::class.java)
         Mockito.verify(values).append(
             Mockito.eq("test-sheet"),
-            Mockito.eq("chicken_facts_runs!A1:H"),
+            Mockito.eq("chicken_facts!A1:H1"),
             valueRangeCaptor.capture(),
         )
         Mockito.verify(append).setValueInputOption("USER_ENTERED")
