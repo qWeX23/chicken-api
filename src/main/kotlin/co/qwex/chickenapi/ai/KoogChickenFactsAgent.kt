@@ -204,10 +204,10 @@ Do NOT ever call tools again after you have started writing the final answer.
                     // }
                     install(Tracing) {
                         addMessageProcessor(TraceFeatureMessageLogWriter(OshaiKotlinLogging.logger {}))
-                        addMessageProcessor(TraceFeatureMessageFileWriter(
-                            sinkOpener = { path -> SystemFileSystem.sink(path).buffered() },
-                            targetPath = Path("agenttraces/agent-traces-${System.currentTimeMillis()}.log")
-                        ))
+                        // addMessageProcessor(TraceFeatureMessageFileWriter(
+                        //     sinkOpener = { path -> SystemFileSystem.sink(path).buffered() },
+                        //     targetPath = Path("agenttraces/agent-traces-${System.currentTimeMillis()}.log")
+                        // ))
                     }
                 }
             agent.run(properties.prompt)
