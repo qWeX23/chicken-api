@@ -14,16 +14,17 @@ import java.time.LocalDateTime
 import java.util.UUID
 
 @Service
-class ScheduledTaskService(
+class ChickenFactResearcherScheduledTaskService(
     private val koogChickenFactsAgent: KoogChickenFactsAgent,
     private val chickenFactsSheetRepository: ChickenFactsSheetRepository,
 ) {
 
     private val log = KotlinLogging.logger {}
 
-    @Scheduled(fixedRate = 600000) // 10 minutes in milliseconds
-    fun performScheduledTask() {
-        log.info { "Scheduled task started at: ${LocalDateTime.now()}" }
+    //@Scheduled(cron = "0 0 0 * * *") // Midnight every day
+    @Scheduled( fixedRate = 43200000) // every 12 hours
+    fun runDailyChickenFactResearcherTask() {
+        log.info { "Chicken Fact Researcher scheduled task started at: ${LocalDateTime.now()}" }
         if (!koogChickenFactsAgent.isReady()) {
             log.info { "Koog agent is not ready, skipping run." }
             return
@@ -78,6 +79,6 @@ class ScheduledTaskService(
         } catch (ex: Exception) {
             log.error(ex) { "Failed to persist chicken facts run ${record.runId} to Google Sheets." }
         }
-        log.info { "Scheduled task completed at: ${LocalDateTime.now()}" }
+        log.info { "Chicken Fact Researcher scheduled task completed at: ${LocalDateTime.now()}" }
     }
 }
