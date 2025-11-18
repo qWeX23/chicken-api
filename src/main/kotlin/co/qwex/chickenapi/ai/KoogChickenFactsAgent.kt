@@ -60,6 +60,7 @@ class KoogChickenFactsAgent(
     private var promptExecutor: SingleLLMPromptExecutor? = null
     private var model: LLModel? = null
     private var agentConfig: AIAgentConfig? = null
+    private var openAIClient: OpenAICompatibleClient? = null
 
     init {
         if (!properties.enabled) {
@@ -121,14 +122,9 @@ class KoogChickenFactsAgent(
 - Optionally use web_fetch to pull supporting content for specific URLs.
 - You may call at most 3 tools total (any combination of web_search and web_fetch).
 - After you have information from 2–4 good sources, you MUST STOP calling tools
-  and produce the final answer.
-- Final answer must be ONLY a valid JSON object with exactly this structure (no extra text):
-  {
-    "fact": "A single, cool, recent fact about chickens",
-    "sourceUrl": "The URL of the source you actually used"
-  }
+  and summarize what you learned.
 
-Do NOT ever call tools again after you have started writing the final answer.
+Provide a concise summary of the most interesting chicken fact you found and include the source URL.
 
         """.trimIndent()
          )
@@ -137,9 +133,17 @@ Do NOT ever call tools again after you have started writing the final answer.
                     maxAgentIterations = properties.maxAgentIterations,
                 )
 
+                // Initialize OpenAI-compatible client for structured output
+                openAIClient = OpenAICompatibleClient(
+                    baseUrl = sanitizedBaseUrl,
+                    httpClient = llmHttpClient,
+                    model = properties.model,
+                )
+
                 log.info {
                     "Koog chicken facts agent initialized with model ${properties.model} using base ${properties.baseUrl}"
                 }
+                log.info { "OpenAI-compatible client initialized for structured outputs" }
             }
         }
     }
@@ -213,15 +217,32 @@ Do NOT ever call tools again after you have started writing the final answer.
                         // ))
                     }
                 }
-            val result = agent.run(properties.prompt)
+            val researchResult = agent.run(properties.prompt)
 
-            // Parse the JSON response
-            try {
-                json.decodeFromString<ChickenFactResponse>(result)
-            } catch (ex: Exception) {
-                log.error(ex) { "Failed to parse structured response: $result" }
-                null
-            }
+            log.info { "Research phase completed. Result: ${researchResult.take(200)}..." }
+
+            // Now use OpenAI-compatible client with structured output to extract the final fact
+            val client = openAIClient ?: return null
+
+            val messages = listOf(
+                Message(
+                    role = "system",
+                    content = """
+                        You are a fact extractor. Based on the research provided, extract ONE single, cool,
+                        recent fact about chickens and its source URL. The response must be a JSON object.
+                    """.trimIndent()
+                ),
+                Message(
+                    role = "user",
+                    content = """
+                        Based on this research, extract the most interesting chicken fact and its source URL:
+
+                        $researchResult
+                    """.trimIndent()
+                )
+            )
+
+            client.chatCompletion(messages)
         } catch (ex: Exception) {
             log.error(ex) { "Koog agent failed to produce chicken facts." }
             null

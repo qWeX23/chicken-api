@@ -16,8 +16,7 @@ private val log = KotlinLogging.logger {}
  * Custom chicken research strategy that enforces:
  * - A maximum number of tool calls (default 4)
  * - Forces final answer generation when tool limit is reached
- * - Validates final answers have proper JSON format with fact and sourceUrl
- * - Fixes malformed answers automatically
+ * - Validates final answers have meaningful content
  */
 fun chickenResearchStrategy(
     maxToolCalls: Int = 4,
@@ -48,46 +47,31 @@ fun chickenResearchStrategy(
         allowToolCalls = false,
     )
 
-    // 5) Answer validator / fixer
+    // 5) Answer validator - just check for meaningful content
     val validateAnswer by node<String, String>("validate_answer") { rawAnswer ->
         val trimmed = rawAnswer.trim()
 
-        // Check if it looks like valid JSON with required fields
-        val looksLikeValidJson = trimmed.startsWith("{") &&
-                                 trimmed.contains("\"fact\"") &&
-                                 trimmed.contains("\"sourceUrl\"") &&
-                                 "http" in trimmed
+        // Check if we have meaningful content (facts and URLs)
+        val hasMeaningfulContent = trimmed.length > 50 && "http" in trimmed
 
-        if (looksLikeValidJson) {
-            // Looks like proper JSON with required fields → accept as-is
-            log.info { "Answer validated successfully as JSON structure" }
+        if (hasMeaningfulContent) {
+            log.info { "Research completed with meaningful content" }
             trimmed
         } else {
-            // One last no-tools turn to "fix" the answer into the right format
-            log.warn { "Answer validation failed, attempting to fix format" }
+            // Request more details
+            log.warn { "Research result seems incomplete, requesting elaboration" }
             llm.writeSession {
                 appendPrompt {
                     user(
                         """
-                        The previous response was not a valid final answer.
-                        Using ONLY what you already know in this conversation,
-                        produce a JSON object with exactly this structure:
-                        {
-                          "fact": "A single, cool, recent fact about chickens",
-                          "sourceUrl": "The URL of the source you actually used"
-                        }
-
-                        Requirements:
-                        - Valid JSON format
-                        - Single fact as a string
-                        - Include the source URL you actually used
-                        - No extra commentary, just the JSON object
+                        Please provide more details about the chicken fact you found,
+                        including the specific fact and the source URL you used.
                         """.trimIndent(),
                     )
                 }
 
                 val resp = requestLLMWithoutTools()
-                log.info { "Fixed answer generated" }
+                log.info { "Elaborated answer generated" }
                 resp.content
             }
         }
@@ -122,8 +106,8 @@ fun chickenResearchStrategy(
         } transformed {
             """
             You have already used enough tools.
-            Now STOP calling tools and synthesize the final answer as a SHORT markdown bullet list.
-            Each bullet MUST include a source URL you actually used.
+            Now STOP calling tools and summarize the most interesting chicken fact you found.
+            Include the source URL you used.
             """.trimIndent()
         },
     )
@@ -158,8 +142,8 @@ fun chickenResearchStrategy(
         } transformed {
             """
             You have already used enough tools.
-            Now STOP calling tools and synthesize the final answer as a JSON object with this structure:
-            {"fact": "A single, cool fact about chickens", "sourceUrl": "The URL you actually used"}
+            Now STOP calling tools and summarize the most interesting chicken fact you found.
+            Include the source URL you used.
             """.trimIndent()
         },
     )
