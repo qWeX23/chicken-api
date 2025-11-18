@@ -13,6 +13,7 @@ import ai.koog.prompt.llm.LLMCapability
 import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
 import co.qwex.chickenapi.config.KoogAgentProperties
+import co.qwex.chickenapi.model.ChickenFactResponse
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
@@ -121,10 +122,11 @@ class KoogChickenFactsAgent(
 - You may call at most 3 tools total (any combination of web_search and web_fetch).
 - After you have information from 2–4 good sources, you MUST STOP calling tools
   and produce the final answer.
-- Final answer must be a SHORT markdown bullet list,
-  each bullet with:
-  - a cool, recent fact about chickens, and
-  - a source URL you actually used.
+- Final answer must be ONLY a valid JSON object with exactly this structure (no extra text):
+  {
+    "fact": "A single, cool, recent fact about chickens",
+    "sourceUrl": "The URL of the source you actually used"
+  }
 
 Do NOT ever call tools again after you have started writing the final answer.
 
@@ -149,8 +151,9 @@ Do NOT ever call tools again after you have started writing the final answer.
 
     /**
      * Creates and runs a new agent instance (agents are single-use).
+     * Returns a ChickenFactResponse with structured fact and sourceUrl.
      */
-    suspend fun fetchChickenFacts(): String? {
+    suspend fun fetchChickenFacts(): ChickenFactResponse? {
         val executor = promptExecutor ?: return null
         val registry = toolRegistry ?: return null
         val config = agentConfig ?: return null
@@ -210,7 +213,15 @@ Do NOT ever call tools again after you have started writing the final answer.
                         // ))
                     }
                 }
-            agent.run(properties.prompt)
+            val result = agent.run(properties.prompt)
+
+            // Parse the JSON response
+            try {
+                json.decodeFromString<ChickenFactResponse>(result)
+            } catch (ex: Exception) {
+                log.error(ex) { "Failed to parse structured response: $result" }
+                null
+            }
         } catch (ex: Exception) {
             log.error(ex) { "Koog agent failed to produce chicken facts." }
             null

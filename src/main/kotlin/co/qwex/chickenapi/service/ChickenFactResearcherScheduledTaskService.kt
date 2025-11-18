@@ -47,15 +47,15 @@ class ChickenFactResearcherScheduledTaskService(
         val completedAt = Instant.now()
         val outcome = when {
             response == null -> AgentRunOutcome.FAILED
-            response.isBlank() -> AgentRunOutcome.NO_OUTPUT
+            response.fact.isBlank() || response.sourceUrl.isBlank() -> AgentRunOutcome.NO_OUTPUT
             else -> AgentRunOutcome.SUCCESS
         }
 
         val failureDetails = failureReason?.let { " Reason: $it" }.orEmpty()
 
         when (outcome) {
-            AgentRunOutcome.SUCCESS -> log.info { "Koog agent output:\n$response" }
-            AgentRunOutcome.NO_OUTPUT -> log.warn { "Koog agent returned no chicken facts." }
+            AgentRunOutcome.SUCCESS -> log.info { "Koog agent output: fact='${response?.fact}', sourceUrl='${response?.sourceUrl}'" }
+            AgentRunOutcome.NO_OUTPUT -> log.warn { "Koog agent returned incomplete chicken facts." }
             AgentRunOutcome.FAILED -> log.error { "Koog agent failed to produce chicken facts.$failureDetails" }
         }
 
@@ -65,7 +65,8 @@ class ChickenFactResearcherScheduledTaskService(
             completedAt = completedAt,
             durationMillis = Duration.between(startedAt, completedAt).toMillis(),
             outcome = outcome,
-            factsMarkdown = response,
+            factText = response?.fact,
+            sourceUrl = response?.sourceUrl,
             errorMessage = when {
                 outcome != AgentRunOutcome.FAILED -> null
                 !failureReason.isNullOrBlank() -> failureReason

@@ -8,7 +8,8 @@ data class ChickenFactsRecord(
     val completedAt: Instant,
     val durationMillis: Long,
     val outcome: AgentRunOutcome,
-    val factsMarkdown: String?,
+    val factText: String?,
+    val sourceUrl: String?,
     val errorMessage: String? = null,
 )
 

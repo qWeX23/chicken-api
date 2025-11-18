@@ -30,7 +30,8 @@ class ChickenFactsSheetRepositoryTests {
             completedAt = Instant.EPOCH,
             durationMillis = 0,
             outcome = AgentRunOutcome.SUCCESS,
-            factsMarkdown = "- Fact",
+            factText = "Chickens can recognize over 100 individual faces.",
+            sourceUrl = "https://example.com/chicken-facts",
             errorMessage = null,
         )
 
@@ -39,13 +40,14 @@ class ChickenFactsSheetRepositoryTests {
         val valueRangeCaptor = ArgumentCaptor.forClass(ValueRange::class.java)
         Mockito.verify(values).append(
             Mockito.eq("test-sheet"),
-            Mockito.eq("chicken_facts!A1:H1"),
+            Mockito.eq("chicken_facts!A1:I1"),
             valueRangeCaptor.capture(),
         )
         Mockito.verify(append).setValueInputOption("USER_ENTERED")
         Mockito.verify(append).execute()
 
         val row = valueRangeCaptor.value.getValues().first()
-        assert(row.contains("- Fact"))
+        assert(row.contains("Chickens can recognize over 100 individual faces."))
+        assert(row.contains("https://example.com/chicken-facts"))
     }
 }

@@ -16,7 +16,7 @@ private val log = KotlinLogging.logger {}
  * Custom chicken research strategy that enforces:
  * - A maximum number of tool calls (default 4)
  * - Forces final answer generation when tool limit is reached
- * - Validates final answers have proper markdown bullet format with URLs
+ * - Validates final answers have proper JSON format with fact and sourceUrl
  * - Fixes malformed answers automatically
  */
 fun chickenResearchStrategy(
@@ -51,12 +51,16 @@ fun chickenResearchStrategy(
     // 5) Answer validator / fixer
     val validateAnswer by node<String, String>("validate_answer") { rawAnswer ->
         val trimmed = rawAnswer.trim()
-        val hasBullet = trimmed.lines().any { it.trim().startsWith("- ") }
-        val hasUrl = "http" in trimmed
 
-        if (trimmed.isNotEmpty() && hasBullet && hasUrl) {
-            // Looks like a proper markdown bullet list with URLs → accept as-is
-            log.info { "Answer validated successfully with bullets and URLs" }
+        // Check if it looks like valid JSON with required fields
+        val looksLikeValidJson = trimmed.startsWith("{") &&
+                                 trimmed.contains("\"fact\"") &&
+                                 trimmed.contains("\"sourceUrl\"") &&
+                                 "http" in trimmed
+
+        if (looksLikeValidJson) {
+            // Looks like proper JSON with required fields → accept as-is
+            log.info { "Answer validated successfully as JSON structure" }
             trimmed
         } else {
             // One last no-tools turn to "fix" the answer into the right format
@@ -67,12 +71,17 @@ fun chickenResearchStrategy(
                         """
                         The previous response was not a valid final answer.
                         Using ONLY what you already know in this conversation,
-                        produce a SHORT markdown bullet list of cool, factual chicken facts.
+                        produce a JSON object with exactly this structure:
+                        {
+                          "fact": "A single, cool, recent fact about chickens",
+                          "sourceUrl": "The URL of the source you actually used"
+                        }
 
                         Requirements:
-                        - Each bullet starts with "- "
-                        - Each bullet includes at least one source URL you actually used
-                        - No extra commentary, just the bullet list
+                        - Valid JSON format
+                        - Single fact as a string
+                        - Include the source URL you actually used
+                        - No extra commentary, just the JSON object
                         """.trimIndent(),
                     )
                 }
@@ -149,8 +158,8 @@ fun chickenResearchStrategy(
         } transformed {
             """
             You have already used enough tools.
-            Now STOP calling tools and synthesize the final answer as a SHORT markdown bullet list.
-            Each bullet MUST include a source URL you actually used.
+            Now STOP calling tools and synthesize the final answer as a JSON object with this structure:
+            {"fact": "A single, cool fact about chickens", "sourceUrl": "The URL you actually used"}
             """.trimIndent()
         },
     )
