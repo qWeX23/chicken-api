@@ -43,7 +43,7 @@ fun chickenResearchStrategy(
 
     // 3) Tool nodes
     val executeTool by nodeExecuteTool()
-    
+
     // Capture save_chicken_fact result
     val captureToolResult by node<ReceivedToolResult, ReceivedToolResult>("capture_tool_result") { toolResult ->
         // Check if this was save_chicken_fact by looking at the result
@@ -54,7 +54,7 @@ fun chickenResearchStrategy(
         }
         toolResult
     }
-    
+
     val sendToolResult by nodeLLMSendToolResult()
 
     // 4) "Force final answer" node (tells LLM to call save_chicken_fact)
@@ -99,8 +99,13 @@ fun chickenResearchStrategy(
             exceedsMax
         } transformed {
             """
-            You have already used enough tools for research.
-            Now you MUST call the save_chicken_fact tool with the best fact you found and its source URL.
+            You have gathered enough information. Now synthesize your research into a single, compelling chicken fact.
+
+            Call the save_chicken_fact tool to record your finding with:
+            - fact: A clear, interesting statement about chickens based on your research
+            - sourceUrl: The most authoritative URL you used as the primary source
+
+            This tool will save your research result in a structured format for later use.
             """.trimIndent()
         },
     )
@@ -140,8 +145,13 @@ fun chickenResearchStrategy(
             exceedsMax
         } transformed {
             """
-            You have already used enough tools for research.
-            Now you MUST call the save_chicken_fact tool with the best fact you found and its source URL.
+            You have gathered sufficient information from your research. It's time to finalize your findings.
+
+            Call the save_chicken_fact tool to document your discovery with:
+            - fact: Your most interesting chicken fact synthesized from the sources you've reviewed
+            - sourceUrl: The primary URL that best supports this fact
+
+            The save_chicken_fact tool stores your research in a structured format that preserves both the fact and its citation.
             """.trimIndent()
         },
     )

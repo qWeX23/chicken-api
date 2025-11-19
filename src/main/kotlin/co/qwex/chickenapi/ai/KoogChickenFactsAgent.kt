@@ -121,13 +121,11 @@ class KoogChickenFactsAgent(
 - When you need new information, call the web_search tool.
 - Optionally use web_fetch to pull supporting content for specific URLs.
 - You may call at most 3 tools total (any combination of web_search and web_fetch).
-- After you have information from 2–4 good sources, you MUST call the save_chicken_fact tool ONCE to save your finding.
-- The save_chicken_fact tool requires:
+- After you have information from 2–4 good sources, call the save_chicken_fact tool ONCE to record your finding.
+- The save_chicken_fact tool preserves your research in a structured format:
   - fact: a cool, recent fact about chickens (plain text, no markdown)
   - sourceUrl: the URL of the source you used
-- You MUST always end your research by calling save_chicken_fact exactly once.
-
-Do NOT produce a final answer without calling save_chicken_fact.
+- Always complete your research by calling save_chicken_fact to document your discovery with its citation.
 
         """.trimIndent()
          )
