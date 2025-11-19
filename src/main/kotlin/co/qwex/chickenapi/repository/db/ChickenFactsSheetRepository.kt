@@ -9,8 +9,8 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Repository
 import java.time.Instant
 
-private const val CHICKEN_FACTS_RANGE = "chicken_facts!A1:H1"
-private const val CHICKEN_FACTS_DATA_RANGE = "chicken_facts!A:H"
+private const val CHICKEN_FACTS_RANGE = "chicken_facts!A1:I1"
+private const val CHICKEN_FACTS_DATA_RANGE = "chicken_facts!A:I"
 
 @Repository
 class ChickenFactsSheetRepository(
@@ -26,8 +26,9 @@ class ChickenFactsSheetRepository(
             record.completedAt.toString(),
             record.durationMillis,
             record.outcome.name,
-            record.factsMarkdown?.length ?: 0,
-            record.factsMarkdown.orEmpty(),
+            record.fact?.length ?: 0,
+            record.fact.orEmpty(),
+            record.sourceUrl.orEmpty(),
             record.errorMessage.orEmpty(),
         )
 
@@ -61,7 +62,7 @@ class ChickenFactsSheetRepository(
 
         for (row in rows.asReversed()) {
             val record = mapRowToRecord(row)
-            if (record != null && record.outcome == AgentRunOutcome.SUCCESS && !record.factsMarkdown.isNullOrBlank()) {
+            if (record != null && record.outcome == AgentRunOutcome.SUCCESS && !record.fact.isNullOrBlank()) {
                 return record
             }
         }
@@ -85,8 +86,9 @@ class ChickenFactsSheetRepository(
             .getOrNull()
             ?: return null
 
-        val factsMarkdown = row.stringAt(6, trim = false)
-        val errorMessage = row.stringAt(7, trim = false)
+        val fact = row.stringAt(6, trim = false)
+        val sourceUrl = row.stringAt(7, trim = false)
+        val errorMessage = row.stringAt(8, trim = false)
 
         return ChickenFactsRecord(
             runId = runId,
@@ -94,7 +96,8 @@ class ChickenFactsSheetRepository(
             completedAt = completedAt,
             durationMillis = durationMillis,
             outcome = outcome,
-            factsMarkdown = factsMarkdown,
+            fact = fact,
+            sourceUrl = sourceUrl,
             errorMessage = errorMessage,
         )
     }

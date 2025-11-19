@@ -91,6 +91,7 @@ class KoogChickenFactsAgent(
                     contextLength = 131_072,
                 )
 
+                val saveChickenFactTool = SaveChickenFactTool()
                 val webSearchTool = WebSearchTool(
                     httpClient = webToolClient,
                     baseUrl = sanitizedBaseUrl,
@@ -106,6 +107,7 @@ class KoogChickenFactsAgent(
                 )
 
                 toolRegistry = ToolRegistry {
+                    tool(saveChickenFactTool)
                     tool(webSearchTool)
                     tool(webFetchTool)
                 }
@@ -119,14 +121,13 @@ class KoogChickenFactsAgent(
 - When you need new information, call the web_search tool.
 - Optionally use web_fetch to pull supporting content for specific URLs.
 - You may call at most 3 tools total (any combination of web_search and web_fetch).
-- After you have information from 2–4 good sources, you MUST STOP calling tools
-  and produce the final answer.
-- Final answer must be a SHORT markdown bullet list,
-  each bullet with:
-  - a cool, recent fact about chickens, and
-  - a source URL you actually used.
+- After you have information from 2–4 good sources, you MUST call the save_chicken_fact tool ONCE to save your finding.
+- The save_chicken_fact tool requires:
+  - fact: a cool, recent fact about chickens (plain text, no markdown)
+  - sourceUrl: the URL of the source you used
+- You MUST always end your research by calling save_chicken_fact exactly once.
 
-Do NOT ever call tools again after you have started writing the final answer.
+Do NOT produce a final answer without calling save_chicken_fact.
 
         """.trimIndent()
          )
@@ -233,6 +234,37 @@ Do NOT ever call tools again after you have started writing the final answer.
                 json(json)
             }
         }
+}
+
+/**
+ * Tool for saving a chicken fact with structured output.
+ * This is the final tool that should be called to save the research result.
+ */
+class SaveChickenFactTool : SimpleTool<SaveChickenFactTool.Args>() {
+    private val log = KotlinLogging.logger {}
+
+    @Serializable
+    data class Args(
+        @property:LLMDescription("The chicken fact in plain text (no markdown formatting)")
+        val fact: String,
+        @property:LLMDescription("The source URL where this fact was found")
+        val sourceUrl: String,
+    )
+
+    override val argsSerializer = Args.serializer()
+    override val name = "save_chicken_fact"
+    override val description = "Saves a chicken fact with its source URL. This should be called once you have found a good chicken fact from your research. Returns a confirmation message."
+
+    override suspend fun doExecute(args: Args): String {
+        log.info { "Saving chicken fact with URL: ${args.sourceUrl}" }
+        // The actual saving will happen in the strategy
+        // This tool just validates and returns the structured data
+        return json.encodeToString(Args.serializer(), args)
+    }
+
+    companion object {
+        private val json = Json { prettyPrint = true }
+    }
 }
 
 /**
