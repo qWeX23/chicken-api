@@ -89,7 +89,7 @@ class ChickenController(
             ApiResponse(responseCode = "400", description = "Invalid chicken data"),
         ],
     )
-    @PostMapping
+    @PostMapping("", "/")
     @ResponseStatus(HttpStatus.ACCEPTED)
     fun submitChickenForReview(
         @OpenApiRequestBody(

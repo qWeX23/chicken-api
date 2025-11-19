@@ -18,7 +18,7 @@ class BreedPageController(
     private val breedRepository: BreedRepository,
 ) {
 
-    @GetMapping
+    @GetMapping("", "/")
     fun breeds(model: Model): String {
         log.debug { "Rendering breeds page" }
         val breeds = breedRepository.getAllBreeds()

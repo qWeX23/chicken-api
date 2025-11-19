@@ -62,4 +62,20 @@ class ChickenControllerTests {
 
         assert(reviewQueue.getChickens().any { it.name == "NewChicken" })
     }
+
+    @Test
+    fun `submit chicken for review works with trailing slash`() {
+        val payload = """{
+            "name":"AnotherChicken",
+            "breedId":2,
+            "imageUrl":"img2"
+        }"""
+
+        mockMvc.post("/api/v1/chickens/") {
+            contentType = org.springframework.http.MediaType.APPLICATION_JSON
+            content = payload
+        }.andExpect { status { isAccepted() } }
+
+        assert(reviewQueue.getChickens().any { it.name == "AnotherChicken" })
+    }
 }
