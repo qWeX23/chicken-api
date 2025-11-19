@@ -28,7 +28,7 @@ import io.swagger.v3.oas.annotations.parameters.RequestBody as OpenApiRequestBod
 private val log = KotlinLogging.logger {}
 
 @RestController()
-@RequestMapping("api/v1/breeds/")
+@RequestMapping("api/v1/breeds")
 class BreedController(
     private val breedRepository: co.qwex.chickenapi.repository.BreedRepository,
     private val reviewQueue: ReviewQueue,
@@ -57,7 +57,7 @@ class BreedController(
             ),
         ],
     )
-    @GetMapping()
+    @GetMapping("", "/")
     fun getAllBreeds(
         @RequestParam(required = false) name: String?,
     ): List<EntityModel<Breed>> {
@@ -149,7 +149,7 @@ class BreedController(
             ApiResponse(responseCode = "400", description = "Invalid breed data"),
         ],
     )
-    @PostMapping
+    @PostMapping("", "/")
     @ResponseStatus(HttpStatus.ACCEPTED)
     fun submitBreedForReview(
         @OpenApiRequestBody(

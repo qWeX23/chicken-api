@@ -114,4 +114,40 @@ class BreedControllerTests {
 
         assert(reviewQueue.getBreeds().any { it.name == "NewBreed" })
     }
+
+    @Test
+    fun `get all breeds works without trailing slash`() {
+        mockBreedListResponse(
+            listOf(
+                listOf("id", "name", "origin", "eggColor", "eggSize", "temperament", "description", "imageUrl", "numEggs"),
+                listOf(1, "Silkie", "China", "White", "Small", "Docile", "Fluffy", "img", 200),
+            ),
+        )
+
+        mockMvc.get("/api/v1/breeds")
+            .andExpect { status { isOk() } }
+            .andExpect { jsonPath("$.length()") { value(1) } }
+            .andExpect { jsonPath("$[0].name") { value("Silkie") } }
+    }
+
+    @Test
+    fun `submit breed for review works without trailing slash`() {
+        val payload = """{
+            "name":"AnotherBreed",
+            "origin":"Mars",
+            "eggColor":"Red",
+            "eggSize":"Medium",
+            "eggNumber":100,
+            "temperament":"Aggressive",
+            "description":"test",
+            "imageUrl":"img2"
+        }"""
+
+        mockMvc.post("/api/v1/breeds") {
+            contentType = org.springframework.http.MediaType.APPLICATION_JSON
+            content = payload
+        }.andExpect { status { isAccepted() } }
+
+        assert(reviewQueue.getBreeds().any { it.name == "AnotherBreed" })
+    }
 }
