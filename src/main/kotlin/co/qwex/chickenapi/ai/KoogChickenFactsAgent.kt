@@ -296,12 +296,12 @@ class SaveChickenFactTool(
      */
     private suspend fun cleanUpMarkdown(fact: String): String {
         val executor = promptExecutor ?: run {
-            log.warn { "No prompt executor available, returning fact as-is" }
-            return fact
+            log.warn { "No prompt executor available, using fallback cleanup" }
+            return applyFallbackCleanup(fact)
         }
         val llmModel = model ?: run {
-            log.warn { "No model available, returning fact as-is" }
-            return fact
+            log.warn { "No model available, using fallback cleanup" }
+            return applyFallbackCleanup(fact)
         }
 
         val cleanupPrompt = prompt("markdown_cleanup") {
@@ -328,13 +328,20 @@ Example output: Chickens can recognize over 100 different faces"""
             log.info { "Successfully cleaned markdown from fact" }
             result
         } catch (ex: Exception) {
-            log.error(ex) { "Failed to clean markdown, returning original fact" }
-            // Fallback: simple string replacement to remove basic markdown
-            fact.replace(Regex("""[*_#`\[\]()]"""), "")
-                .replace("**", "")
-                .replace("__", "")
-                .trim()
+            log.error(ex) { "Failed to clean markdown, using fallback cleanup" }
+            applyFallbackCleanup(fact)
         }
+    }
+
+    /**
+     * Applies simple string replacement to remove basic markdown formatting.
+     */
+    private fun applyFallbackCleanup(fact: String): String {
+        return fact.replace(Regex("""[*_#`\[\]()]"""), "")
+            .replace("**", "")
+            .replace("__", "")
+            .replace("  ", " ")
+            .trim()
     }
 
     companion object {
