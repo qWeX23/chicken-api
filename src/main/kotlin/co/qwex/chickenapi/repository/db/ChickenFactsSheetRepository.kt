@@ -71,6 +71,30 @@ class ChickenFactsSheetRepository(
         return null
     }
 
+    fun fetchAllSuccessfulChickenFacts(): List<ChickenFactsRecord> {
+        val rows = try {
+            sheets.spreadsheets().values()
+                .get(spreadsheetId, CHICKEN_FACTS_DATA_RANGE)
+                .execute()
+                .getValues()
+                ?.filter { it.isNotEmpty() }
+                ?: emptyList()
+        } catch (ex: Exception) {
+            log.error(ex) { "Failed to read chicken facts sheet." }
+            return emptyList()
+        }
+
+        if (rows.isEmpty()) {
+            log.debug { "Chicken facts sheet returned no rows." }
+            return emptyList()
+        }
+
+        return rows
+            .mapNotNull { mapRowToRecord(it) }
+            .filter { it.outcome == AgentRunOutcome.SUCCESS && !it.fact.isNullOrBlank() }
+            .sortedByDescending { it.completedAt }
+    }
+
     private fun mapRowToRecord(row: List<Any>): ChickenFactsRecord? {
         val runId = row.stringAt(0) ?: return null
         if (runId.equals("runId", ignoreCase = true)) {
