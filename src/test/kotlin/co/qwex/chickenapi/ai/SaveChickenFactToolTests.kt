@@ -97,4 +97,32 @@ class SaveChickenFactToolTests {
         assertTrue(!result.contains("**"), "Fallback should remove markdown symbols")
         assertTrue(result.contains("http://example.com"), "Source URL should be preserved")
     }
+
+    @Test
+    fun `tool rejects empty sourceUrl`() = runBlocking {
+        val tool = SaveChickenFactTool(null, null)
+        val args = SaveChickenFactTool.Args(
+            fact = "Chickens can recognize over 100 different faces",
+            sourceUrl = ""
+        )
+
+        val exception = kotlin.test.assertFailsWith<IllegalArgumentException> {
+            tool.doExecute(args)
+        }
+        assertTrue(exception.message?.contains("sourceUrl is required") == true, "Should throw error for empty sourceUrl")
+    }
+
+    @Test
+    fun `tool rejects blank sourceUrl`() = runBlocking {
+        val tool = SaveChickenFactTool(null, null)
+        val args = SaveChickenFactTool.Args(
+            fact = "Chickens can recognize over 100 different faces",
+            sourceUrl = "   "
+        )
+
+        val exception = kotlin.test.assertFailsWith<IllegalArgumentException> {
+            tool.doExecute(args)
+        }
+        assertTrue(exception.message?.contains("sourceUrl is required") == true, "Should throw error for blank sourceUrl")
+    }
 }

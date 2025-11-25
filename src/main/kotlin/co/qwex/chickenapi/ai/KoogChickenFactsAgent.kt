@@ -264,6 +264,13 @@ class SaveChickenFactTool(
     override suspend fun doExecute(args: Args): String {
         log.info { "Saving chicken fact with URL: ${args.sourceUrl}" }
 
+        // Validate that sourceUrl is not empty
+        if (args.sourceUrl.isBlank()) {
+            val errorMsg = "Error: sourceUrl is required and cannot be empty. Please provide a valid source URL for the fact."
+            log.error { errorMsg }
+            throw IllegalArgumentException(errorMsg)
+        }
+
         // Check if the fact contains markdown formatting
         val cleanedFact = if (containsMarkdown(args.fact)) {
             log.warn { "Detected markdown in fact, cleaning it up with LLM" }
