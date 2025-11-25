@@ -5,6 +5,8 @@ import co.qwex.chickenapi.model.AgentRunOutcome
 import co.qwex.chickenapi.model.ChickenFactsRecord
 import co.qwex.chickenapi.repository.db.ChickenFactsSheetRepository
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import mu.KotlinLogging
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
@@ -13,6 +15,12 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.util.UUID
 
+@Serializable
+data class ChickenFactJson(
+    val fact: String,
+    val sourceUrl: String,
+)
+
 @Service
 class ChickenFactResearcherScheduledTaskService(
     private val koogChickenFactsAgent: KoogChickenFactsAgent,
@@ -20,6 +28,7 @@ class ChickenFactResearcherScheduledTaskService(
 ) {
 
     private val log = KotlinLogging.logger {}
+    private val json = Json { ignoreUnknownKeys = true }
 
     //@Scheduled(cron = "0 0 0 * * *") // Midnight every day
     @Scheduled( fixedRate = 43200000) // every 12 hours
@@ -45,16 +54,34 @@ class ChickenFactResearcherScheduledTaskService(
         }
 
         val completedAt = Instant.now()
-        val outcome = when {
-            response == null -> AgentRunOutcome.FAILED
-            response.isBlank() -> AgentRunOutcome.NO_OUTPUT
-            else -> AgentRunOutcome.SUCCESS
+
+        // Parse JSON output from agent
+        var fact: String? = null
+        var sourceUrl: String? = null
+        var outcome = AgentRunOutcome.FAILED
+
+        if (response != null && response.isNotBlank()) {
+            try {
+                val factData = json.decodeFromString<ChickenFactJson>(response)
+                fact = factData.fact
+                sourceUrl = factData.sourceUrl
+                outcome = AgentRunOutcome.SUCCESS
+                log.info { "Successfully parsed chicken fact: $fact from $sourceUrl" }
+            } catch (ex: Exception) {
+                log.error(ex) { "Failed to parse JSON response from agent: $response" }
+                failureReason = "Failed to parse JSON: ${ex.message}"
+                outcome = AgentRunOutcome.FAILED
+            }
+        } else if (response == null) {
+            outcome = AgentRunOutcome.FAILED
+        } else {
+            outcome = AgentRunOutcome.NO_OUTPUT
         }
 
         val failureDetails = failureReason?.let { " Reason: $it" }.orEmpty()
 
         when (outcome) {
-            AgentRunOutcome.SUCCESS -> log.info { "Koog agent output:\n$response" }
+            AgentRunOutcome.SUCCESS -> log.info { "Koog agent successfully produced fact" }
             AgentRunOutcome.NO_OUTPUT -> log.warn { "Koog agent returned no chicken facts." }
             AgentRunOutcome.FAILED -> log.error { "Koog agent failed to produce chicken facts.$failureDetails" }
         }
@@ -65,7 +92,8 @@ class ChickenFactResearcherScheduledTaskService(
             completedAt = completedAt,
             durationMillis = Duration.between(startedAt, completedAt).toMillis(),
             outcome = outcome,
-            factsMarkdown = response,
+            fact = fact,
+            sourceUrl = sourceUrl,
             errorMessage = when {
                 outcome != AgentRunOutcome.FAILED -> null
                 !failureReason.isNullOrBlank() -> failureReason

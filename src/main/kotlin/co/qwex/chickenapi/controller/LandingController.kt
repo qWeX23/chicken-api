@@ -8,9 +8,6 @@ import org.springframework.ui.Model
 import org.springframework.web.bind.annotation.GetMapping
 
 private val log = KotlinLogging.logger {}
-private val markdownLinkRegex = Regex("\\[([^\\]]+?)\\]\\((https?://[^)]+)\\)")
-private val urlRegex = Regex("https?://\\S+")
-private val sourceMarkerRegex = Regex("(?i)(?:\\*+|_+)?sources?[:\\-]")
 private val fallbackDailyFact = DailyFact(
     fact = "A hen's earlobe color often predicts the shade of the eggs she lays.",
     sourceUrl = "https://www.britannica.com/animal/chicken",
@@ -40,29 +37,9 @@ class LandingController(
     }
 
     private fun toDailyFact(record: ChickenFactsRecord): DailyFact? {
-        val markdown = record.factsMarkdown?.trim() ?: return null
-        val firstLine = markdown.lineSequence().firstOrNull { it.isNotBlank() } ?: return null
+        val fact = record.fact?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val sourceUrl = record.sourceUrl?.trim()?.takeIf { it.isNotBlank() }
 
-        val sourceUrl = markdownLinkRegex.find(markdown)?.groupValues?.getOrNull(2)
-            ?: urlRegex.find(markdown)?.value
-
-        val cleanedLine = markdownLinkRegex.replace(firstLine) { it.groupValues[1] }
-        val factText = cleanedLine
-            .replace(Regex("^[-*]\\s+"), "")
-            .replace("**", "")
-            .replace("__", "")
-            .trim()
-
-        val sanitizedFact = factText.removeSourceCitation()
-        return sanitizedFact.takeIf { it.isNotBlank() }?.let { DailyFact(fact = it, sourceUrl = sourceUrl) }
-    }
-}
-
-private fun String.removeSourceCitation(): String {
-    val match = sourceMarkerRegex.find(this)
-    return if (match != null) {
-        substring(0, match.range.first).trim()
-    } else {
-        this
+        return DailyFact(fact = fact, sourceUrl = sourceUrl)
     }
 }

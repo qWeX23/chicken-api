@@ -8,6 +8,7 @@ import ai.koog.agents.core.dsl.extension.nodeLLMRequest
 import ai.koog.agents.core.dsl.extension.nodeLLMSendToolResult
 import ai.koog.agents.core.dsl.extension.onAssistantMessage
 import ai.koog.agents.core.dsl.extension.onToolCall
+import ai.koog.agents.core.environment.ReceivedToolResult
 import mu.KotlinLogging
 
 private val log = KotlinLogging.logger {}
@@ -16,18 +17,20 @@ private val log = KotlinLogging.logger {}
  * Custom chicken research strategy that enforces:
  * - A maximum number of tool calls (default 4)
  * - Forces final answer generation when tool limit is reached
- * - Validates final answers have proper markdown bullet format with URLs
- * - Fixes malformed answers automatically
+ * - Expects save_chicken_fact tool to be called to return structured JSON output
  */
 fun chickenResearchStrategy(
     maxToolCalls: Int = 4,
 ): AIAgentGraphStrategy<String, String> = strategy<String, String>("chicken_research") {
     // Per-run tool call counter (reset at start node)
     var toolCalls = 0
+    // Track if save_chicken_fact was called
+    var savedFactJson: String? = null
 
     // 1) Reset counter on each run
     val resetToolCounter by node<String, String>("reset_tool_counter") { input ->
         toolCalls = 0
+        savedFactJson = null
         log.info { "Starting new chicken research run, tool counter reset" }
         input
     }
@@ -40,47 +43,31 @@ fun chickenResearchStrategy(
 
     // 3) Tool nodes
     val executeTool by nodeExecuteTool()
+
+    // Capture save_chicken_fact result
+    val captureToolResult by node<ReceivedToolResult, ReceivedToolResult>("capture_tool_result") { toolResult ->
+        // Check if this was save_chicken_fact by looking at the result
+        val result = toolResult.result.toString()
+        if (result.contains("\"fact\"") && result.contains("\"sourceUrl\"")) {
+            savedFactJson = result
+            log.info { "Captured save_chicken_fact result" }
+        }
+        toolResult
+    }
+
     val sendToolResult by nodeLLMSendToolResult()
 
-    // 4) "Force final answer" node (LLM, *no* tools)
-    val requestFinalNoTools by nodeLLMRequest(
-        name = "request_final_no_tools",
-        allowToolCalls = false,
+    // 4) "Force final answer" node (tells LLM to call save_chicken_fact)
+    val requestSaveFact by nodeLLMRequest(
+        name = "request_save_fact",
+        allowToolCalls = true,
     )
 
-    // 5) Answer validator / fixer
-    val validateAnswer by node<String, String>("validate_answer") { rawAnswer ->
-        val trimmed = rawAnswer.trim()
-        val hasBullet = trimmed.lines().any { it.trim().startsWith("- ") }
-        val hasUrl = "http" in trimmed
-
-        if (trimmed.isNotEmpty() && hasBullet && hasUrl) {
-            // Looks like a proper markdown bullet list with URLs → accept as-is
-            log.info { "Answer validated successfully with bullets and URLs" }
-            trimmed
-        } else {
-            // One last no-tools turn to "fix" the answer into the right format
-            log.warn { "Answer validation failed, attempting to fix format" }
-            llm.writeSession {
-                appendPrompt {
-                    user(
-                        """
-                        The previous response was not a valid final answer.
-                        Using ONLY what you already know in this conversation,
-                        produce a SHORT markdown bullet list of cool, factual chicken facts.
-
-                        Requirements:
-                        - Each bullet starts with "- "
-                        - Each bullet includes at least one source URL you actually used
-                        - No extra commentary, just the bullet list
-                        """.trimIndent(),
-                    )
-                }
-
-                val resp = requestLLMWithoutTools()
-                log.info { "Fixed answer generated" }
-                resp.content
-            }
+    // 5) Return the saved fact JSON or fallback
+    val returnResult by node<String, String>("return_result") { _ ->
+        savedFactJson ?: run {
+            log.warn { "No saved fact found, returning empty result" }
+            "{}"
         }
     }
 
@@ -102,66 +89,75 @@ fun chickenResearchStrategy(
         },
     )
 
-    // If LLM tries to call tools *after* the cap → force final, no tools
+    // If LLM tries to call tools *after* the cap → force save_chicken_fact call
     edge(
-        callLLM forwardTo requestFinalNoTools onToolCall { _ ->
+        callLLM forwardTo requestSaveFact onToolCall { _ ->
             val exceedsMax = toolCalls > maxToolCalls
             if (exceedsMax) {
-                log.warn { "Tool call limit exceeded ($toolCalls > $maxToolCalls), forcing final answer" }
+                log.warn { "Tool call limit exceeded ($toolCalls > $maxToolCalls), forcing save_chicken_fact" }
             }
             exceedsMax
         } transformed {
             """
-            You have already used enough tools.
-            Now STOP calling tools and synthesize the final answer as a SHORT markdown bullet list.
-            Each bullet MUST include a source URL you actually used.
+            You have gathered enough information. Now synthesize your research into a single, compelling chicken fact.
+
+            Call the save_chicken_fact tool to record your finding with:
+            - fact: A clear, interesting statement about chickens based on your research
+            - sourceUrl: The most authoritative URL you used as the primary source
+
+            This tool will save your research result in a structured format for later use.
             """.trimIndent()
         },
     )
 
-    // If LLM already gives a normal assistant message (no tools) → validate & finish
+    // If LLM gives assistant message without calling save_chicken_fact → return what we have
     edge(
-        callLLM forwardTo validateAnswer onAssistantMessage { true },
+        callLLM forwardTo returnResult onAssistantMessage { true },
     )
-    edge(validateAnswer forwardTo nodeFinish)
+    edge(returnResult forwardTo nodeFinish)
 
-    // Execute tool → send result back to LLM
-    edge(executeTool forwardTo sendToolResult)
+    // Execute tool → capture result → send to LLM
+    edge(executeTool forwardTo captureToolResult)
+    edge(captureToolResult forwardTo sendToolResult)
 
-    // After tool result, if LLM wants more tools and we're under cap → run again
+    // After tool result, check if save_chicken_fact was called
+    edge(
+        sendToolResult forwardTo returnResult onAssistantMessage { savedFactJson != null },
+    )
+
+    // After tool result, if save_chicken_fact not called and under cap → allow more tools
     edge(
         sendToolResult forwardTo executeTool onToolCall { _ ->
             toolCalls++
-            val canCallTool = toolCalls <= maxToolCalls
+            val canCallTool = toolCalls <= maxToolCalls && savedFactJson == null
             log.info { "Tool call #$toolCalls requested after tool result (max: $maxToolCalls), will execute: $canCallTool" }
             canCallTool
         },
     )
 
-    // After tool result, if LLM wants more tools but cap exceeded → force final, no tools
+    // After tool result, if save_chicken_fact not called but cap exceeded → force save
     edge(
-        sendToolResult forwardTo requestFinalNoTools onToolCall { _ ->
-            val exceedsMax = toolCalls > maxToolCalls
+        sendToolResult forwardTo requestSaveFact onToolCall { _ ->
+            val exceedsMax = toolCalls > maxToolCalls && savedFactJson == null
             if (exceedsMax) {
-                log.warn { "Tool call limit exceeded after tool result ($toolCalls > $maxToolCalls), forcing final answer" }
+                log.warn { "Tool call limit exceeded after tool result ($toolCalls > $maxToolCalls), forcing save_chicken_fact" }
             }
             exceedsMax
         } transformed {
             """
-            You have already used enough tools.
-            Now STOP calling tools and synthesize the final answer as a SHORT markdown bullet list.
-            Each bullet MUST include a source URL you actually used.
+            You have gathered sufficient information from your research. It's time to finalize your findings.
+
+            Call the save_chicken_fact tool to document your discovery with:
+            - fact: Your most interesting chicken fact synthesized from the sources you've reviewed
+            - sourceUrl: The primary URL that best supports this fact
+
+            The save_chicken_fact tool stores your research in a structured format that preserves both the fact and its citation.
             """.trimIndent()
         },
     )
 
-    // After tool result, if LLM gives an assistant message → validate & finish
+    // Request save fact → execute it
     edge(
-        sendToolResult forwardTo validateAnswer onAssistantMessage { true },
-    )
-
-    // Final no-tools request → validate & finish
-    edge(
-        requestFinalNoTools forwardTo validateAnswer onAssistantMessage { true },
+        requestSaveFact forwardTo executeTool onToolCall { true },
     )
 }

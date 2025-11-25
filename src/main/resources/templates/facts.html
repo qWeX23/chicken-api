@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html
+  xmlns:th="http://www.thymeleaf.org"
+  th:replace="~{layout :: layout(~{::title}, ~{::section}, ~{::meta})}"
+>
+  <head>
+    <title>Chicken Facts Catalog</title>
+    <th:block th:fragment="meta">
+      <meta name="description" content="Browse the complete catalog of researched chicken facts." />
+      <meta property="og:title" content="Chicken Facts Catalog" />
+      <meta property="og:description" content="Browse the complete catalog of researched chicken facts." />
+      <meta property="og:url" th:content="@{/facts}" />
+      <meta property="og:type" content="website" />
+    </th:block>
+  </head>
+  <main class="min-h-screen bg-slate-50">
+    <section class="max-w-4xl mx-auto px-4 py-8 space-y-8">
+      <header class="text-center space-y-2">
+        <p class="text-sm uppercase font-semibold tracking-wide text-amber-600">Research catalog</p>
+        <h1 class="text-3xl font-bold text-slate-900">Chicken Facts</h1>
+        <p class="text-slate-600">Discover fascinating facts about chickens, researched daily by Agent Silkie, the chicken AI agent, and verified with sources.</p>
+      </header>
+
+      <div class="space-y-4" th:if="${#lists.isEmpty(facts)}">
+        <article class="p-6 text-center bg-white rounded-xl border border-dashed border-slate-300 text-slate-500">
+          <p>No chicken facts available yet. Check back soon!</p>
+        </article>
+      </div>
+
+      <div class="space-y-4" th:if="${!#lists.isEmpty(facts)}">
+        <article
+          class="flex flex-col gap-4 p-6 bg-white rounded-xl shadow-sm border border-slate-200"
+          th:each="fact : ${facts}">
+          
+          <div class="space-y-3">
+            <div class="flex items-start justify-between gap-4">
+              <p class="text-base text-slate-800 flex-1" th:text="${fact.fact}">
+                Chicken fact content goes here
+              </p>
+              <span class="relative group flex-shrink-0 text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded cursor-help" th:text="${fact.durationSeconds + 's'}">
+                45s
+                <span class="invisible group-hover:visible absolute bottom-full right-0 mb-2 px-3 py-2 bg-slate-900 text-white text-xs rounded shadow-lg whitespace-nowrap z-10">
+                  <span class="block font-semibold mb-1">Research Job Details</span>
+                  <span class="block" th:text="'Run ID: ' + ${fact.runId}">Run ID: abc-123</span>
+                  <span class="block" th:text="'Completed: ' + ${fact.completedAt}">Completed: Nov 25, 2025</span>
+                  <span class="block" th:text="'Duration: ' + ${fact.durationSeconds} + ' seconds'">Duration: 45 seconds</span>
+                  <span class="absolute top-full right-4 border-4 border-transparent border-t-slate-900"></span>
+                </span>
+              </span>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3 text-sm">
+              <time class="text-slate-600" th:text="${fact.completedAt}">
+                November 25, 2025 at 1:56 AM
+              </time>
+              
+              <a
+                class="font-medium text-amber-600 hover:text-amber-700 underline"
+                th:if="${fact.sourceUrl}"
+                th:href="${fact.sourceUrl}"
+                target="_blank"
+                rel="noopener"
+              >
+                View Source
+              </a>
+
+              <span
+                class="text-slate-400 text-xs"
+                th:if="${fact.sourceUrl == null or #strings.isEmpty(fact.sourceUrl)}"
+              >
+                No source available
+              </span>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+</html>
