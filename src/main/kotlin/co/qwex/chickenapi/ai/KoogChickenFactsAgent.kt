@@ -91,7 +91,10 @@ class KoogChickenFactsAgent(
                     contextLength = 131_072,
                 )
 
-                val saveChickenFactTool = SaveChickenFactTool()
+                val saveChickenFactTool = SaveChickenFactTool(
+                    promptExecutor = promptExecutor,
+                    model = model,
+                )
                 val webSearchTool = WebSearchTool(
                     httpClient = webToolClient,
                     baseUrl = sanitizedBaseUrl,
@@ -123,8 +126,9 @@ class KoogChickenFactsAgent(
 - You may call at most 3 tools total (any combination of web_search and web_fetch).
 - After you have information from 2–4 good sources, call the save_chicken_fact tool ONCE to record your finding.
 - The save_chicken_fact tool preserves your research in a structured format:
-  - fact: a cool, recent fact about chickens (plain text, no markdown)
+  - fact: a SINGLE cool, recent fact about chickens in PLAIN TEXT (absolutely NO markdown, NO bullets, NO asterisks, NO formatting symbols)
   - sourceUrl: the URL of the source you used
+- IMPORTANT: Your fact MUST be ONE complete sentence in plain text. Do NOT use any markdown formatting like **, __, *, #, bullets, or links.
 - Always complete your research by calling save_chicken_fact to document your discovery with its citation.
 
         """.trimIndent()
@@ -237,13 +241,17 @@ class KoogChickenFactsAgent(
 /**
  * Tool for saving a chicken fact with structured output.
  * This is the final tool that should be called to save the research result.
+ * Validates that the fact is in plain text (no markdown) and uses LLM to clean it up if needed.
  */
-class SaveChickenFactTool : SimpleTool<SaveChickenFactTool.Args>() {
+class SaveChickenFactTool(
+    private val promptExecutor: SingleLLMPromptExecutor?,
+    private val model: LLModel?,
+) : SimpleTool<SaveChickenFactTool.Args>() {
     private val log = KotlinLogging.logger {}
 
     @Serializable
     data class Args(
-        @property:LLMDescription("The chicken fact in plain text (no markdown formatting)")
+        @property:LLMDescription("A single chicken fact in plain text (no markdown formatting, no bullets, no asterisks)")
         val fact: String,
         @property:LLMDescription("The source URL where this fact was found")
         val sourceUrl: String,
@@ -251,13 +259,82 @@ class SaveChickenFactTool : SimpleTool<SaveChickenFactTool.Args>() {
 
     override val argsSerializer = Args.serializer()
     override val name = "save_chicken_fact"
-    override val description = "Saves a chicken fact with its source URL. This should be called once you have found a good chicken fact from your research. Returns a confirmation message."
+    override val description = "Saves a single chicken fact with its source URL. The fact MUST be in plain text with no markdown formatting. This should be called once you have found a good chicken fact from your research. Returns a confirmation message."
 
     override suspend fun doExecute(args: Args): String {
         log.info { "Saving chicken fact with URL: ${args.sourceUrl}" }
-        // The actual saving will happen in the strategy
-        // This tool just validates and returns the structured data
-        return json.encodeToString(Args.serializer(), args)
+
+        // Check if the fact contains markdown formatting
+        val cleanedFact = if (containsMarkdown(args.fact)) {
+            log.warn { "Detected markdown in fact, cleaning it up with LLM" }
+            cleanUpMarkdown(args.fact)
+        } else {
+            args.fact
+        }
+
+        // Return the cleaned fact as JSON
+        val cleanedArgs = args.copy(fact = cleanedFact)
+        return json.encodeToString(Args.serializer(), cleanedArgs)
+    }
+
+    /**
+     * Detects if a string contains markdown formatting.
+     */
+    private fun containsMarkdown(text: String): Boolean {
+        // Check for common markdown patterns
+        return text.contains(Regex("""[*_#`\[\]]""")) || // Common markdown symbols
+            text.contains("**") ||  // Bold
+            text.contains("__") ||  // Underline
+            text.contains("##") ||  // Headers
+            text.trim().startsWith("-") || // List items
+            text.trim().startsWith("*") || // List items
+            text.contains("[") && text.contains("]") && text.contains("(") && text.contains(")") // Links
+    }
+
+    /**
+     * Uses LLM to clean up markdown formatting and ensure a single fact.
+     */
+    private suspend fun cleanUpMarkdown(fact: String): String {
+        val executor = promptExecutor ?: run {
+            log.warn { "No prompt executor available, returning fact as-is" }
+            return fact
+        }
+        val llmModel = model ?: run {
+            log.warn { "No model available, returning fact as-is" }
+            return fact
+        }
+
+        val cleanupPrompt = prompt("markdown_cleanup") {
+            system(
+                """You are a text formatter that converts markdown-formatted text into plain text.
+
+Your task:
+1. Remove ALL markdown formatting (bullets, asterisks, underscores, headers, links, etc.)
+2. Extract only a SINGLE fact - if there are multiple facts, choose the most interesting one
+3. Return ONLY the plain text fact, nothing else
+4. The fact should be one complete sentence
+5. Do NOT add any introductory text or explanations
+
+Example input: "**Chickens** can recognize over 100 *different* faces"
+Example output: Chickens can recognize over 100 different faces"""
+            )
+            user("Clean up this text and return only a single plain text fact:\n\n$fact")
+        }
+
+        return try {
+            log.info { "Cleaning up markdown from fact using LLM" }
+            val cleaned = executor.execute(cleanupPrompt, llmModel)
+            val result = cleaned.toString().trim()
+            log.info { "Successfully cleaned markdown from fact" }
+            result
+        } catch (ex: Exception) {
+            log.error(ex) { "Failed to clean markdown, returning original fact" }
+            // Fallback: simple string replacement to remove basic markdown
+            fact.replace(Regex("""[*_#`\[\]()]"""), "")
+                .replace("**", "")
+                .replace("__", "")
+                .trim()
+        }
     }
 
     companion object {
