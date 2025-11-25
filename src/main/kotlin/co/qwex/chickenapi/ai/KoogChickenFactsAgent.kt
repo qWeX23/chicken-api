@@ -281,14 +281,9 @@ class SaveChickenFactTool(
      * Detects if a string contains markdown formatting.
      */
     private fun containsMarkdown(text: String): Boolean {
-        // Check for common markdown patterns
-        return text.contains(Regex("""[*_#`\[\]]""")) || // Common markdown symbols
-            text.contains("**") ||  // Bold
-            text.contains("__") ||  // Underline
-            text.contains("##") ||  // Headers
-            text.trim().startsWith("-") || // List items
-            text.trim().startsWith("*") || // List items
-            text.contains("[") && text.contains("]") && text.contains("(") && text.contains(")") // Links
+        // Check for common markdown patterns using regex
+        val markdownPattern = Regex("""[*_#`\[\]]|^\s*[-*]\s""")
+        return markdownPattern.containsMatchIn(text)
     }
 
     /**
@@ -338,9 +333,7 @@ Example output: Chickens can recognize over 100 different faces"""
      */
     private fun applyFallbackCleanup(fact: String): String {
         return fact.replace(Regex("""[*_#`\[\]()]"""), "")
-            .replace("**", "")
-            .replace("__", "")
-            .replace("  ", " ")
+            .replace(Regex("""\s+"""), " ")
             .trim()
     }
 

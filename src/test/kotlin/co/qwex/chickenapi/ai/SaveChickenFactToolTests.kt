@@ -83,7 +83,7 @@ class SaveChickenFactToolTests {
         method.isAccessible = true
         val hasMarkdown = method.invoke(tool, fact) as Boolean
 
-        assertTrue(!hasMarkdown, "Should not detect markdown in plain text")
+        kotlin.test.assertFalse(hasMarkdown, "Should not detect markdown in plain text")
     }
 
     @Test
