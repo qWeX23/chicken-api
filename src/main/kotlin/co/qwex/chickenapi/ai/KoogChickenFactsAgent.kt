@@ -280,9 +280,10 @@ class SaveChickenFactTool(
     /**
      * Detects if a string contains markdown formatting.
      */
-    private fun containsMarkdown(text: String): Boolean {
+    internal fun containsMarkdown(text: String): Boolean {
         // Check for common markdown patterns using regex
-        val markdownPattern = Regex("""[*_#`\[\]]|^\s*[-*]\s""")
+        // Matches: *, _, #, `, [, ], or bullet points at start of lines
+        val markdownPattern = Regex("""[*_#`\[\]]|(^|\n)\s*[-*]\s""")
         return markdownPattern.containsMatchIn(text)
     }
 
@@ -332,7 +333,12 @@ Example output: Chickens can recognize over 100 different faces"""
      * Applies simple string replacement to remove basic markdown formatting.
      */
     private fun applyFallbackCleanup(fact: String): String {
-        return fact.replace(Regex("""[*_#`\[\]()]"""), "")
+        return fact
+            // Remove markdown links [text](url) -> text
+            .replace(Regex("""\[([^\]]+)\]\([^)]+\)"""), "$1")
+            // Remove remaining markdown symbols but keep parentheses used in regular text
+            .replace(Regex("""[*_#`\[\]]"""), "")
+            // Normalize whitespace
             .replace(Regex("""\s+"""), " ")
             .trim()
     }
