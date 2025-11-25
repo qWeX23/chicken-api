@@ -102,7 +102,7 @@ fun chickenResearchStrategy(
             You have gathered enough information. Now synthesize your research into a single, compelling chicken fact.
 
             Call the save_chicken_fact tool to record your finding with:
-            - fact: A clear, interesting statement about chickens based on your research
+            - fact: ONE clear, interesting statement about chickens in PLAIN TEXT (no markdown, no bullets, no asterisks, no formatting)
             - sourceUrl: The most authoritative URL you used as the primary source
 
             This tool will save your research result in a structured format for later use.
@@ -148,7 +148,7 @@ fun chickenResearchStrategy(
             You have gathered sufficient information from your research. It's time to finalize your findings.
 
             Call the save_chicken_fact tool to document your discovery with:
-            - fact: Your most interesting chicken fact synthesized from the sources you've reviewed
+            - fact: ONE interesting chicken fact in PLAIN TEXT synthesized from the sources you've reviewed (no markdown, no bullets, no asterisks, no formatting)
             - sourceUrl: The primary URL that best supports this fact
 
             The save_chicken_fact tool stores your research in a structured format that preserves both the fact and its citation.
