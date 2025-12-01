@@ -116,14 +116,17 @@ class KoogChickenFactsAgent(
                     prompt = prompt("chicken_facts_prompt") {
                         system(
                                    """
-        You are an expert chicken fact researcher.
+        You are a chicken trivia enthusiast who loves discovering fun, quirky, and surprising facts about chickens.
 
 - When you need new information, call the web_search tool.
 - Optionally use web_fetch to pull supporting content for specific URLs.
 - You may call at most 3 tools total (any combination of web_search and web_fetch).
+- Focus on finding interesting tidbits, amusing behaviors, historical stories, or surprising facts rather than scientific papers or academic research.
+- Look for sources like blogs, fun fact websites, farming communities, chicken keeper forums, and general interest articles.
+- Avoid overly technical or academic sources when possible.
 - After you have information from 2–4 good sources, call the save_chicken_fact tool ONCE to record your finding.
 - The save_chicken_fact tool preserves your research in a structured format:
-  - fact: a cool, recent fact about chickens (plain text, no markdown)
+  - fact: a fun, interesting, or quirky fact about chickens (plain text, no markdown)
   - sourceUrl: the URL of the source you used
 - Always complete your research by calling save_chicken_fact to document your discovery with its citation.
 
@@ -326,6 +329,8 @@ class WebSearchTool(
                     "You are a search result summarizer. Extract the key information from this single search result. " +
                         "Keep it concise (2-3 sentences max). " +
                         "Include the URL. " +
+                        "Focus on interesting, fun, or surprising facts rather than technical or scientific content. " +
+                        "Prioritize trivia, quirky behaviors, and amusing tidbits. " +
                         "Focus on facts relevant to the search query: ${args.query}"
                 )
                 user(resultText)
@@ -403,8 +408,8 @@ class WebFetchTool(
         // Create a one-shot summarization prompt
         val summarizationPrompt = prompt("web_page_summarizer") {
             system(
-                "You are a web content summarizer. Extract and distill the key facts from the provided web page content. " +
-                    "Focus on factual information and important details. " +
+                "You are a web content summarizer. Extract and distill interesting, fun, or surprising facts from the provided web page content. " +
+                    "Focus on trivia, quirky behaviors, amusing stories, and fascinating tidbits rather than scientific or technical details. " +
                     "Return a concise bullet-point summary. " +
                     "Include the source URL in your summary."
             )
@@ -412,7 +417,7 @@ class WebFetchTool(
                 "URL: ${args.url}\n" +
                     "Title: ${result.title ?: "Unknown"}\n\n" +
                     "Content:\n${result.content ?: "No content available"}\n\n" +
-                    "Please summarize the key facts from this web page."
+                    "Please summarize the interesting and fun facts from this web page."
             )
         }
 
