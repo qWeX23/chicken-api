@@ -23,6 +23,7 @@ class RequestLoggingFilter : OncePerRequestFilter() {
         filterChain: FilterChain,
     ) {
         val requestId = request.getHeader(REQUEST_ID_HEADER) ?: UUID.randomUUID().toString()
+        request.setAttribute(REQUEST_ID_ATTRIBUTE, requestId)
         MDC.put(REQUEST_ID_MDC_KEY, requestId)
         response.setHeader(REQUEST_ID_HEADER, requestId)
 
@@ -40,5 +41,6 @@ class RequestLoggingFilter : OncePerRequestFilter() {
     companion object {
         const val REQUEST_ID_HEADER = "X-Request-ID"
         const val REQUEST_ID_MDC_KEY = "requestId"
+        const val REQUEST_ID_ATTRIBUTE = "co.qwex.chickenapi.logging.REQUEST_ID"
     }
 }

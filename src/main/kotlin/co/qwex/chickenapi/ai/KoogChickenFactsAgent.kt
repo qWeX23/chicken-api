@@ -298,7 +298,7 @@ class WebSearchTool(
         val client = httpClient ?: throw IllegalStateException("Web search client not configured.")
         val executor = promptExecutor ?: throw IllegalStateException("Prompt executor not configured.")
         val llmModel = model ?: throw IllegalStateException("Model not configured.")
-        val resolvedMax = (args.maxResults ?: defaultMaxResults).coerceIn(1, 1)
+        val resolvedMax = (args.maxResults ?: defaultMaxResults).coerceIn(1, 5)
 
         log.info { "Executing web_search with query: '${args.query}', maxResults: $resolvedMax" }
 
