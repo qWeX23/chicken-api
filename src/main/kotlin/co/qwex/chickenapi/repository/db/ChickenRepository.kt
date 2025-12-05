@@ -22,15 +22,19 @@ class ChickenRepository(
         val rangeWithId = "$SHEET_NAME!$MIN_COLUMN$rowNumber:$MAX_COLUMN$rowNumber"
         val response = sheets.spreadsheets().values()
             .get(spreadsheetId, rangeWithId).execute()
-        val values = response.getValues() ?: return null
-        val chicken = values.map {
-            Chicken(
-                id = it[0].toString().toInt(),
-                name = it[2].toString(),
-                breedId = it[1].toString().toInt(),
-                imageUrl = it[3].toString(),
-            )
-        }.firstOrNull()
+        val row = response.getValues()?.firstOrNull() ?: return null
+
+        val chickenId = row.getOrNull(0)?.toString()?.toIntOrNull() ?: return null
+        val breedId = row.getOrNull(1)?.toString()?.toIntOrNull() ?: return null
+        val name = row.getOrNull(2)?.toString()?.takeIf { it.isNotBlank() } ?: return null
+        val imageUrl = row.getOrNull(3)?.toString().orEmpty()
+
+        val chicken = Chicken(
+            id = chickenId,
+            name = name,
+            breedId = breedId,
+            imageUrl = imageUrl,
+        )
         log.debug { "Result for chicken ID $id: $chicken" }
         return chicken
     }

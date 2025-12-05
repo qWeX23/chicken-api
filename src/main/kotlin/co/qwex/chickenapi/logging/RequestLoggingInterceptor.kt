@@ -41,7 +41,7 @@ class RequestLoggingInterceptor(
             durationMs = durationMs,
             clientIp = extractClientIp(request),
             userAgent = request.getHeader("User-Agent"),
-            requestId = request.getHeader(REQUEST_ID_HEADER),
+            requestId = resolveRequestId(request),
         )
 
         requestLoggingService.recordRequest(logEntry)
@@ -61,9 +61,13 @@ class RequestLoggingInterceptor(
         return header?.takeIf { it.isNotBlank() } ?: request.remoteAddr
     }
 
+    private fun resolveRequestId(request: HttpServletRequest): String? {
+        val generatedRequestId = request.getAttribute(RequestLoggingFilter.REQUEST_ID_ATTRIBUTE) as? String
+        return generatedRequestId ?: request.getHeader(RequestLoggingFilter.REQUEST_ID_HEADER)
+    }
+
     companion object {
         private const val REQUEST_START_TIME_ATTRIBUTE = "co.qwex.chickenapi.logging.REQUEST_START_TIME"
-        private const val REQUEST_ID_HEADER = "X-Request-ID"
         private const val X_FORWARDED_FOR_HEADER = "X-Forwarded-For"
     }
 }
