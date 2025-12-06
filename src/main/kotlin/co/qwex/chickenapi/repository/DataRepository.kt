@@ -1,18 +1,18 @@
 package co.qwex.chickenapi.repository
 
 /**
- * A unified interface for Google Sheets-backed repositories.
+ * A unified interface for data repositories.
  *
- * This interface defines the basic operations commonly used when
- * interacting with Google Sheets as a data store. Implementations
- * can override specific methods based on their needs.
+ * This interface defines the basic CRUD-like operations for data access,
+ * abstracting away the underlying storage technology. Implementations can
+ * use Google Sheets, SQL databases, NoSQL stores, or any other backend.
  *
  * @param T the entity type managed by this repository
  * @param ID the type of the entity's identifier
  */
-interface SheetsRepository<T, ID> {
+interface DataRepository<T, ID> {
     /**
-     * Retrieves all entities from the sheet.
+     * Retrieves all entities from the data store.
      *
      * @return a list of all entities, or an empty list if none exist
      */
@@ -27,9 +27,9 @@ interface SheetsRepository<T, ID> {
     fun findById(id: ID): T?
 
     /**
-     * Appends a new entity to the sheet.
+     * Saves a new entity to the data store.
      *
-     * @param entity the entity to append
+     * @param entity the entity to save
      */
-    fun append(entity: T)
+    fun save(entity: T)
 }

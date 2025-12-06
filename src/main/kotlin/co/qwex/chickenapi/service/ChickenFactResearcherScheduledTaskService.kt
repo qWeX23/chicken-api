@@ -103,7 +103,7 @@ class ChickenFactResearcherScheduledTaskService(
         )
 
         try {
-            chickenFactsRepository.append(record)
+            chickenFactsRepository.save(record)
         } catch (ex: Exception) {
             log.error(ex) { "Failed to persist chicken facts run ${record.runId} to Google Sheets." }
         }

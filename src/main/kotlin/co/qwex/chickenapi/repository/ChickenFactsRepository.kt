@@ -2,7 +2,7 @@ package co.qwex.chickenapi.repository
 
 import co.qwex.chickenapi.model.ChickenFactsRecord
 
-interface ChickenFactsRepository : SheetsRepository<ChickenFactsRecord, String> {
+interface ChickenFactsRepository : DataRepository<ChickenFactsRecord, String> {
     /**
      * Fetches the latest successful chicken fact from the repository.
      *

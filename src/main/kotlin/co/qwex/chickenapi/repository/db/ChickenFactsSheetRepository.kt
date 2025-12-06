@@ -20,7 +20,7 @@ class ChickenFactsSheetRepository(
 ) : ChickenFactsRepository {
     private val log = KotlinLogging.logger {}
 
-    override fun append(entity: ChickenFactsRecord) {
+    override fun save(entity: ChickenFactsRecord) {
         val row = listOf(
             entity.runId,
             entity.startedAt.toString(),
@@ -40,7 +40,7 @@ class ChickenFactsSheetRepository(
             .setValueInputOption("USER_ENTERED")
             .execute()
 
-        log.debug { "Appended chicken facts run ${entity.runId} with outcome ${entity.outcome}" }
+        log.debug { "Saved chicken facts run ${entity.runId} with outcome ${entity.outcome}" }
     }
 
     override fun fetchLatestChickenFact(): ChickenFactsRecord? {

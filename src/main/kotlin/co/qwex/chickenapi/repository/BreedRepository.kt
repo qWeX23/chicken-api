@@ -2,7 +2,7 @@ package co.qwex.chickenapi.repository
 
 import co.qwex.chickenapi.model.Breed
 
-interface BreedRepository : SheetsRepository<Breed, Int> {
+interface BreedRepository : DataRepository<Breed, Int> {
     fun getAllBreeds(): List<Breed>
 
     fun getBreedById(id: Int): Breed?
@@ -11,7 +11,7 @@ interface BreedRepository : SheetsRepository<Breed, Int> {
 
     override fun findById(id: Int): Breed? = getBreedById(id)
 
-    override fun append(entity: Breed) {
-        throw UnsupportedOperationException("Append not supported for BreedRepository")
+    override fun save(entity: Breed) {
+        throw UnsupportedOperationException("Save not supported for BreedRepository")
     }
 }
