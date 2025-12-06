@@ -1,7 +1,7 @@
 package co.qwex.chickenapi.controller
 
 import co.qwex.chickenapi.model.ChickenFactsRecord
-import co.qwex.chickenapi.repository.db.ChickenFactsSheetRepository
+import co.qwex.chickenapi.repository.ChickenFactsRepository
 import mu.KotlinLogging
 import org.springframework.stereotype.Controller
 import org.springframework.ui.Model
@@ -23,13 +23,13 @@ data class ChickenFactDisplay(
 @Controller
 @RequestMapping("/facts")
 class ChickenFactsPageController(
-    private val chickenFactsSheetRepository: ChickenFactsSheetRepository,
+    private val chickenFactsRepository: ChickenFactsRepository,
 ) {
 
     @GetMapping("", "/")
     fun facts(model: Model): String {
         log.debug { "Rendering chicken facts catalog page" }
-        val facts = chickenFactsSheetRepository.fetchAllSuccessfulChickenFacts()
+        val facts = chickenFactsRepository.fetchAllSuccessfulChickenFacts()
             .map { it.toDisplay() }
         model.addAttribute("facts", facts)
         return "facts"
