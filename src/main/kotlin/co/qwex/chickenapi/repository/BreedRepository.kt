@@ -11,7 +11,7 @@ interface BreedRepository : DataRepository<Breed, Int> {
 
     override fun findById(id: Int): Breed? = getBreedById(id)
 
-    override fun save(entity: Breed) {
-        throw UnsupportedOperationException("Save not supported for BreedRepository")
+    override fun create(entity: Breed) {
+        throw UnsupportedOperationException("Create not supported for BreedRepository")
     }
 }

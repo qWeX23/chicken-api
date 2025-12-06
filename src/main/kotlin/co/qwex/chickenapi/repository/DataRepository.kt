@@ -27,9 +27,9 @@ interface DataRepository<T, ID> {
     fun findById(id: ID): T?
 
     /**
-     * Saves a new entity to the data store.
+     * Creates a new entity in the data store.
      *
-     * @param entity the entity to save
+     * @param entity the entity to create
      */
-    fun save(entity: T)
+    fun create(entity: T)
 }

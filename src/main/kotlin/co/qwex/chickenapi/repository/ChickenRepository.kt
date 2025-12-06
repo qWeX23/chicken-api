@@ -11,7 +11,7 @@ interface ChickenRepository : DataRepository<Chicken, Int> {
         throw UnsupportedOperationException("findAll not supported for ChickenRepository")
     }
 
-    override fun save(entity: Chicken) {
-        throw UnsupportedOperationException("Save not supported for ChickenRepository")
+    override fun create(entity: Chicken) {
+        throw UnsupportedOperationException("Create not supported for ChickenRepository")
     }
 }
