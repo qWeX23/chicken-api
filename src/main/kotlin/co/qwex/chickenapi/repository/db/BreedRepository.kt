@@ -3,12 +3,15 @@ package co.qwex.chickenapi.repository.db
 import co.qwex.chickenapi.model.Breed
 import co.qwex.chickenapi.repository.BreedRepository
 import com.google.api.services.sheets.v4.Sheets
+import com.google.api.services.sheets.v4.model.ValueRange
 import mu.KotlinLogging
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Repository
+import java.time.Instant
+
 private const val SHEET_NAME = "breeds"
 private const val MIN_COLUMN = "A"
-private const val MAX_COLUMN = "I"
+private const val MAX_COLUMN = "J"
 private val log = KotlinLogging.logger {}
 
 @Repository
@@ -40,6 +43,7 @@ class GoogleSheetBreedRepository(
                 description = row.getOrNull(6)?.toString(),
                 imageUrl = row.getOrNull(7)?.toString(),
                 numEggs = row.getOrNull(8)?.toString()?.toIntOrNull(),
+                updatedAt = row.getOrNull(9)?.toString()?.parseInstantOrNull(),
             )
         }
         log.debug { "Fetched ${breeds.size} breeds" }
@@ -62,11 +66,44 @@ class GoogleSheetBreedRepository(
                 description = row.getOrNull(6)?.toString(),
                 imageUrl = row.getOrNull(7)?.toString(),
                 numEggs = row.getOrNull(8)?.toString()?.toIntOrNull(),
+                updatedAt = row.getOrNull(9)?.toString()?.parseInstantOrNull(),
             )
         }.firstOrNull()
+    }
+
+    override fun update(entity: Breed) {
+        val rowNumber = entity.id + 1
+        val updatedAt = Instant.now()
+        val row = listOf(
+            entity.id,
+            entity.name,
+            entity.origin.orEmpty(),
+            entity.eggColor.orEmpty(),
+            entity.eggSize.orEmpty(),
+            entity.temperament.orEmpty(),
+            entity.description.orEmpty(),
+            entity.imageUrl.orEmpty(),
+            entity.numEggs ?: "",
+            updatedAt.toString(),
+        )
+
+        val range = "$SHEET_NAME!$MIN_COLUMN$rowNumber:$MAX_COLUMN$rowNumber"
+        val valueRange = ValueRange().setValues(listOf(row))
+
+        sheets.spreadsheets().values()
+            .update(spreadsheetId, range, valueRange)
+            .setValueInputOption("USER_ENTERED")
+            .execute()
+
+        log.info { "Updated breed ${entity.id} (${entity.name}) at $updatedAt" }
     }
 }
 
 fun buildRange(sheetName: String, minColumn: String, maxColumn: String, index: Int? = null): String {
     return "$sheetName!$minColumn${index ?: 1}:$maxColumn${index ?: ""}"
 }
+
+private fun String.parseInstantOrNull(): Instant? =
+    takeIf { it.isNotBlank() }?.let {
+        runCatching { Instant.parse(it) }.getOrNull()
+    }

@@ -30,7 +30,7 @@ class ChickenRepositoryTests {
             ),
         )
         `when`(
-            sheets.spreadsheets().values().get(eq("test-sheet"), eq("chickens!A2:D2")).execute(),
+            sheets.spreadsheets().values().get(eq("test-sheet"), eq("chickens!A2:E2")).execute(),
         ).thenReturn(valueRange)
 
         val chicken = repository.getChickenById(1)
@@ -49,7 +49,7 @@ class ChickenRepositoryTests {
             ),
         )
         `when`(
-            sheets.spreadsheets().values().get(eq("test-sheet"), eq("chickens!A2:D2")).execute(),
+            sheets.spreadsheets().values().get(eq("test-sheet"), eq("chickens!A2:E2")).execute(),
         ).thenReturn(incompleteRow)
 
         val chicken = repository.getChickenById(1)
