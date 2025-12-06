@@ -10,8 +10,8 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Repository
 import java.time.Instant
 
-private const val CHICKEN_FACTS_RANGE = "chicken_facts!A1:I1"
-private const val CHICKEN_FACTS_DATA_RANGE = "chicken_facts!A:I"
+private const val CHICKEN_FACTS_RANGE = "chicken_facts!A1:J1"
+private const val CHICKEN_FACTS_DATA_RANGE = "chicken_facts!A:J"
 
 @Repository
 class ChickenFactsSheetRepository(
@@ -21,6 +21,7 @@ class ChickenFactsSheetRepository(
     private val log = KotlinLogging.logger {}
 
     override fun create(entity: ChickenFactsRecord) {
+        val updatedAt = Instant.now()
         val row = listOf(
             entity.runId,
             entity.startedAt.toString(),
@@ -31,6 +32,7 @@ class ChickenFactsSheetRepository(
             entity.fact.orEmpty(),
             entity.sourceUrl.orEmpty(),
             entity.errorMessage.orEmpty(),
+            updatedAt.toString(),
         )
 
         val valueRange = ValueRange().setValues(listOf(row))
@@ -114,6 +116,7 @@ class ChickenFactsSheetRepository(
         val fact = row.stringAt(6, trim = false)
         val sourceUrl = row.stringAt(7, trim = false)
         val errorMessage = row.stringAt(8, trim = false)
+        val updatedAt = row.instantAt(9)
 
         return ChickenFactsRecord(
             runId = runId,
@@ -124,6 +127,7 @@ class ChickenFactsSheetRepository(
             fact = fact,
             sourceUrl = sourceUrl,
             errorMessage = errorMessage,
+            updatedAt = updatedAt,
         )
     }
 

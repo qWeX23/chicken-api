@@ -1,5 +1,7 @@
 package co.qwex.chickenapi.model
 
+import java.time.Instant
+
 data class Breed(
     val id: Int,
     val name: String,
@@ -10,4 +12,5 @@ data class Breed(
     val description: String?,
     val imageUrl: String?,
     val numEggs: Int?,
+    val updatedAt: Instant? = null,
 )

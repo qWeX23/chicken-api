@@ -6,9 +6,11 @@ import com.google.api.services.sheets.v4.Sheets
 import mu.KotlinLogging
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Repository
+import java.time.Instant
+
 private const val SHEET_NAME = "chickens"
 private const val MIN_COLUMN = "A"
-private const val MAX_COLUMN = "D"
+private const val MAX_COLUMN = "E"
 private val log = KotlinLogging.logger {}
 
 @Repository
@@ -28,14 +30,21 @@ class ChickenRepository(
         val breedId = row.getOrNull(1)?.toString()?.toIntOrNull() ?: return null
         val name = row.getOrNull(2)?.toString()?.takeIf { it.isNotBlank() } ?: return null
         val imageUrl = row.getOrNull(3)?.toString().orEmpty()
+        val updatedAt = row.getOrNull(4)?.toString()?.parseInstantOrNull()
 
         val chicken = Chicken(
             id = chickenId,
             name = name,
             breedId = breedId,
             imageUrl = imageUrl,
+            updatedAt = updatedAt,
         )
         log.debug { "Result for chicken ID $id: $chicken" }
         return chicken
     }
 }
+
+private fun String.parseInstantOrNull(): Instant? =
+    takeIf { it.isNotBlank() }?.let {
+        runCatching { Instant.parse(it) }.getOrNull()
+    }

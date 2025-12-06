@@ -11,6 +11,7 @@ data class ChickenFactsRecord(
     val fact: String?,
     val sourceUrl: String?,
     val errorMessage: String? = null,
+    val updatedAt: Instant? = null,
 )
 
 enum class AgentRunOutcome {

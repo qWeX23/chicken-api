@@ -32,4 +32,13 @@ interface DataRepository<T, ID> {
      * @param entity the entity to create
      */
     fun create(entity: T)
+
+    /**
+     * Updates an existing entity in the data store.
+     *
+     * @param entity the entity to update
+     */
+    fun update(entity: T) {
+        throw UnsupportedOperationException("Update not supported for this repository")
+    }
 }

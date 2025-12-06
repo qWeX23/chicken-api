@@ -14,4 +14,9 @@ interface BreedRepository : DataRepository<Breed, Int> {
     override fun create(entity: Breed) {
         throw UnsupportedOperationException("Create not supported for BreedRepository")
     }
+
+    /**
+     * Updates an existing breed. The updatedAt timestamp will be set automatically.
+     */
+    override fun update(entity: Breed)
 }

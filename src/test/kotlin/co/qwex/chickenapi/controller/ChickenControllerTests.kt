@@ -28,7 +28,7 @@ class ChickenControllerTests {
 
     private fun mockChickenById(id: Int, values: List<List<Any>>) {
         val valueRange = ValueRange().setValues(values)
-        val range = "chickens!A${id + 1}:D${id + 1}"
+        val range = "chickens!A${id + 1}:E${id + 1}"
         Mockito.`when`(
             sheets.spreadsheets().values().get(anyString(), Mockito.eq(range)).execute(),
         ).thenReturn(valueRange)
