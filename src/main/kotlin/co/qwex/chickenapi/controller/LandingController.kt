@@ -1,7 +1,7 @@
 package co.qwex.chickenapi.controller
 
 import co.qwex.chickenapi.model.ChickenFactsRecord
-import co.qwex.chickenapi.repository.db.ChickenFactsSheetRepository
+import co.qwex.chickenapi.repository.ChickenFactsRepository
 import mu.KotlinLogging
 import org.springframework.stereotype.Controller
 import org.springframework.ui.Model
@@ -17,12 +17,12 @@ data class DailyFact(val fact: String, val sourceUrl: String? = null)
 
 @Controller
 class LandingController(
-    private val chickenFactsSheetRepository: ChickenFactsSheetRepository,
+    private val chickenFactsRepository: ChickenFactsRepository,
 ) {
     @GetMapping("/")
     fun landing(model: Model): String {
         log.debug { "Rendering landing page" }
-        val latestFact = chickenFactsSheetRepository.fetchLatestChickenFact()
+        val latestFact = chickenFactsRepository.fetchLatestChickenFact()
             ?.let(::toDailyFact)
             ?: fallbackDailyFact
 

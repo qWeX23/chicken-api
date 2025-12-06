@@ -2,6 +2,7 @@ package co.qwex.chickenapi.repository.db
 
 import co.qwex.chickenapi.model.AgentRunOutcome
 import co.qwex.chickenapi.model.ChickenFactsRecord
+import co.qwex.chickenapi.repository.ChickenFactsRepository
 import com.google.api.services.sheets.v4.Sheets
 import com.google.api.services.sheets.v4.model.ValueRange
 import mu.KotlinLogging
@@ -16,20 +17,20 @@ private const val CHICKEN_FACTS_DATA_RANGE = "chicken_facts!A:I"
 class ChickenFactsSheetRepository(
     private val sheets: Sheets,
     @Value("\${google.sheets.db.spreadsheetId}") private val spreadsheetId: String,
-) {
+) : ChickenFactsRepository {
     private val log = KotlinLogging.logger {}
 
-    fun append(record: ChickenFactsRecord) {
+    override fun create(entity: ChickenFactsRecord) {
         val row = listOf(
-            record.runId,
-            record.startedAt.toString(),
-            record.completedAt.toString(),
-            record.durationMillis,
-            record.outcome.name,
-            record.fact?.length ?: 0,
-            record.fact.orEmpty(),
-            record.sourceUrl.orEmpty(),
-            record.errorMessage.orEmpty(),
+            entity.runId,
+            entity.startedAt.toString(),
+            entity.completedAt.toString(),
+            entity.durationMillis,
+            entity.outcome.name,
+            entity.fact?.length ?: 0,
+            entity.fact.orEmpty(),
+            entity.sourceUrl.orEmpty(),
+            entity.errorMessage.orEmpty(),
         )
 
         val valueRange = ValueRange().setValues(listOf(row))
@@ -39,10 +40,10 @@ class ChickenFactsSheetRepository(
             .setValueInputOption("USER_ENTERED")
             .execute()
 
-        log.debug { "Appended chicken facts run ${record.runId} with outcome ${record.outcome}" }
+        log.debug { "Created chicken facts run ${entity.runId} with outcome ${entity.outcome}" }
     }
 
-    fun fetchLatestChickenFact(): ChickenFactsRecord? {
+    override fun fetchLatestChickenFact(): ChickenFactsRecord? {
         val rows = try {
             sheets.spreadsheets().values()
                 .get(spreadsheetId, CHICKEN_FACTS_DATA_RANGE)
@@ -71,7 +72,7 @@ class ChickenFactsSheetRepository(
         return null
     }
 
-    fun fetchAllSuccessfulChickenFacts(): List<ChickenFactsRecord> {
+    override fun fetchAllSuccessfulChickenFacts(): List<ChickenFactsRecord> {
         val rows = try {
             sheets.spreadsheets().values()
                 .get(spreadsheetId, CHICKEN_FACTS_DATA_RANGE)

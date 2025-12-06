@@ -3,7 +3,7 @@ package co.qwex.chickenapi.service
 import co.qwex.chickenapi.ai.KoogChickenFactsAgent
 import co.qwex.chickenapi.model.AgentRunOutcome
 import co.qwex.chickenapi.model.ChickenFactsRecord
-import co.qwex.chickenapi.repository.db.ChickenFactsSheetRepository
+import co.qwex.chickenapi.repository.ChickenFactsRepository
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -24,7 +24,7 @@ data class ChickenFactJson(
 @Service
 class ChickenFactResearcherScheduledTaskService(
     private val koogChickenFactsAgent: KoogChickenFactsAgent,
-    private val chickenFactsSheetRepository: ChickenFactsSheetRepository,
+    private val chickenFactsRepository: ChickenFactsRepository,
 ) {
 
     private val log = KotlinLogging.logger {}
@@ -103,7 +103,7 @@ class ChickenFactResearcherScheduledTaskService(
         )
 
         try {
-            chickenFactsSheetRepository.append(record)
+            chickenFactsRepository.create(record)
         } catch (ex: Exception) {
             log.error(ex) { "Failed to persist chicken facts run ${record.runId} to Google Sheets." }
         }

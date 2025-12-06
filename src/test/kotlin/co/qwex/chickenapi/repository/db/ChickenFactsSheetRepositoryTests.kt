@@ -17,7 +17,7 @@ class ChickenFactsSheetRepositoryTests {
     private val repository = ChickenFactsSheetRepository(sheets, "test-sheet")
 
     @Test
-    fun `append writes row to sheet`() {
+    fun `create writes row to sheet`() {
         val values = sheets.spreadsheets().values()
         val append = Mockito.mock(Sheets.Spreadsheets.Values.Append::class.java)
         Mockito.`when`(values.append(anyString(), anyString(), Mockito.any(ValueRange::class.java))).thenReturn(append)
@@ -35,7 +35,7 @@ class ChickenFactsSheetRepositoryTests {
             errorMessage = null,
         )
 
-        repository.append(record)
+        repository.create(record)
 
         val valueRangeCaptor = ArgumentCaptor.forClass(ValueRange::class.java)
         Mockito.verify(values).append(

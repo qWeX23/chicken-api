@@ -1,7 +1,7 @@
 package co.qwex.chickenapi.controller
 
 import co.qwex.chickenapi.model.ChickenFactsRecord
-import co.qwex.chickenapi.repository.db.ChickenFactsSheetRepository
+import co.qwex.chickenapi.repository.ChickenFactsRepository
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
@@ -30,7 +30,7 @@ data class ChickenFact(
 @RestController
 @RequestMapping("api/v1/facts")
 class ChickenFactsController(
-    private val chickenFactsSheetRepository: ChickenFactsSheetRepository,
+    private val chickenFactsRepository: ChickenFactsRepository,
 ) {
 
     @Operation(
@@ -54,7 +54,7 @@ class ChickenFactsController(
     @GetMapping("", "/")
     fun getAllChickenFacts(): CollectionModel<EntityModel<ChickenFact>> {
         log.info { "Fetching all chicken facts" }
-        val facts = chickenFactsSheetRepository.fetchAllSuccessfulChickenFacts()
+        val facts = chickenFactsRepository.fetchAllSuccessfulChickenFacts()
             .map { it.toChickenFact() }
             .map { fact ->
                 EntityModel.of(fact).apply {
