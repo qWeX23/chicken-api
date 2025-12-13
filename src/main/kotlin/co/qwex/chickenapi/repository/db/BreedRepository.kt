@@ -11,7 +11,8 @@ import java.time.Instant
 
 private const val SHEET_NAME = "breeds"
 private const val MIN_COLUMN = "A"
-private const val MAX_COLUMN = "J"
+private const val MAX_COLUMN = "K"
+private const val SOURCES_DELIMITER = "|"
 private val log = KotlinLogging.logger {}
 
 @Repository
@@ -44,6 +45,7 @@ class GoogleSheetBreedRepository(
                 imageUrl = row.getOrNull(7)?.toString(),
                 numEggs = row.getOrNull(8)?.toString()?.toIntOrNull(),
                 updatedAt = row.getOrNull(9)?.toString()?.parseInstantOrNull(),
+                sources = row.getOrNull(10)?.toString()?.parseSourcesList(),
             )
         }
         log.debug { "Fetched ${breeds.size} breeds" }
@@ -67,6 +69,7 @@ class GoogleSheetBreedRepository(
                 imageUrl = row.getOrNull(7)?.toString(),
                 numEggs = row.getOrNull(8)?.toString()?.toIntOrNull(),
                 updatedAt = row.getOrNull(9)?.toString()?.parseInstantOrNull(),
+                sources = row.getOrNull(10)?.toString()?.parseSourcesList(),
             )
         }.firstOrNull()
     }
@@ -85,6 +88,7 @@ class GoogleSheetBreedRepository(
             entity.imageUrl.orEmpty(),
             entity.numEggs ?: "",
             updatedAt.toString(),
+            entity.sources?.joinToString(SOURCES_DELIMITER).orEmpty(),
         )
 
         val range = "$SHEET_NAME!$MIN_COLUMN$rowNumber:$MAX_COLUMN$rowNumber"
@@ -107,3 +111,6 @@ private fun String.parseInstantOrNull(): Instant? =
     takeIf { it.isNotBlank() }?.let {
         runCatching { Instant.parse(it) }.getOrNull()
     }
+
+private fun String.parseSourcesList(): List<String>? =
+    takeIf { it.isNotBlank() }?.split(SOURCES_DELIMITER)?.filter { it.isNotBlank() }
