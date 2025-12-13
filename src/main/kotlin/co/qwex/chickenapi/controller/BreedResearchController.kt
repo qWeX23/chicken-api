@@ -1,10 +1,8 @@
 package co.qwex.chickenapi.controller
 
 import co.qwex.chickenapi.ai.KoogBreedResearchAgent
-import co.qwex.chickenapi.model.AgentRunOutcome
 import co.qwex.chickenapi.model.BreedResearchRecord
 import co.qwex.chickenapi.repository.BreedResearchRepository
-import co.qwex.chickenapi.service.BreedResearcherScheduledTaskService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
@@ -15,15 +13,11 @@ import org.springframework.hateoas.CollectionModel
 import org.springframework.hateoas.EntityModel
 import org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo
 import org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.methodOn
-import org.springframework.http.HttpStatus
-import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
-import java.util.concurrent.CompletableFuture
 
 private val log = KotlinLogging.logger {}
 
@@ -39,17 +33,11 @@ data class BreedResearch(
     val durationMillis: Long,
 )
 
-data class ResearchTriggerResponse(
-    val message: String,
-    val status: String,
-)
-
 @RestController
 @RequestMapping("api/v1/breed-research")
 class BreedResearchController(
     private val breedResearchRepository: BreedResearchRepository,
     private val breedResearchAgent: KoogBreedResearchAgent,
-    private val breedResearcherScheduledTaskService: BreedResearcherScheduledTaskService,
 ) {
 
     @Operation(
@@ -123,60 +111,6 @@ class BreedResearchController(
             add(linkTo(methodOn(BreedResearchController::class.java).getBreedResearchHistory(breedId)).withSelfRel())
             add(linkTo(methodOn(BreedResearchController::class.java).getAllBreedResearch()).withRel("all-research"))
         }
-    }
-
-    @Operation(
-        summary = "Trigger breed research",
-        description = "Manually trigger the breed research agent to research the next breed in queue. " +
-            "The agent will select the breed with the oldest updatedAt timestamp or one that has never been researched.",
-    )
-    @ApiResponses(
-        value = [
-            ApiResponse(
-                responseCode = "202",
-                description = "Research task accepted and started",
-                content = [
-                    Content(
-                        mediaType = "application/json",
-                        schema = Schema(implementation = ResearchTriggerResponse::class),
-                    ),
-                ],
-            ),
-            ApiResponse(
-                responseCode = "503",
-                description = "Research agent is not ready",
-            ),
-        ],
-    )
-    @PostMapping("/trigger")
-    fun triggerBreedResearch(): ResponseEntity<ResearchTriggerResponse> {
-        log.info { "Manual breed research trigger requested" }
-
-        if (!breedResearchAgent.isReady()) {
-            log.warn { "Breed research agent is not ready" }
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(ResearchTriggerResponse(
-                    message = "Breed research agent is not ready. Check API key configuration.",
-                    status = "unavailable"
-                ))
-        }
-
-        // Run the research task asynchronously
-        CompletableFuture.runAsync {
-            try {
-                log.info { "Starting manual breed research task" }
-                breedResearcherScheduledTaskService.runDailyBreedResearchTask()
-                log.info { "Manual breed research task completed" }
-            } catch (ex: Exception) {
-                log.error(ex) { "Manual breed research task failed" }
-            }
-        }
-
-        return ResponseEntity.status(HttpStatus.ACCEPTED)
-            .body(ResearchTriggerResponse(
-                message = "Breed research task started. Check /api/v1/breed-research for results.",
-                status = "started"
-            ))
     }
 
     @Operation(
