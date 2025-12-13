@@ -65,6 +65,7 @@ class BreedResearchController(
             .map { it.toBreedResearch() }
             .map { record ->
                 EntityModel.of(record).apply {
+                    add(linkTo(methodOn(BreedResearchController::class.java).getResearchById(record.runId)).withSelfRel())
                     add(linkTo(methodOn(BreedResearchController::class.java).getAllBreedResearch()).withRel("research"))
                     add(linkTo(methodOn(BreedResearchController::class.java).getBreedResearchHistory(record.breedId)).withRel("breed-history"))
                 }
@@ -72,6 +73,7 @@ class BreedResearchController(
 
         return CollectionModel.of(research).apply {
             add(linkTo(methodOn(BreedResearchController::class.java).getAllBreedResearch()).withSelfRel())
+            add(linkTo(methodOn(BreedResearchController::class.java).getAgentStatus()).withRel("status"))
         }
     }
 
@@ -103,13 +105,54 @@ class BreedResearchController(
             .map { it.toBreedResearch() }
             .map { record ->
                 EntityModel.of(record).apply {
-                    add(linkTo(methodOn(BreedResearchController::class.java).getBreedResearchHistory(breedId)).withSelfRel())
+                    add(linkTo(methodOn(BreedResearchController::class.java).getResearchById(record.runId)).withSelfRel())
+                    add(linkTo(methodOn(BreedResearchController::class.java).getBreedResearchHistory(breedId)).withRel("breed-history"))
                 }
             }
 
         return CollectionModel.of(research).apply {
             add(linkTo(methodOn(BreedResearchController::class.java).getBreedResearchHistory(breedId)).withSelfRel())
             add(linkTo(methodOn(BreedResearchController::class.java).getAllBreedResearch()).withRel("all-research"))
+            add(linkTo(methodOn(BreedResearchController::class.java).getAgentStatus()).withRel("status"))
+        }
+    }
+
+    @Operation(
+        summary = "Get research record by ID",
+        description = "Retrieve a specific breed research record by its run ID.",
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "Research record found",
+                content = [
+                    Content(
+                        mediaType = "application/hal+json",
+                        schema = Schema(implementation = BreedResearch::class),
+                    ),
+                ],
+            ),
+            ApiResponse(responseCode = "404", description = "Research record not found"),
+        ],
+    )
+    @GetMapping("/{runId}")
+    fun getResearchById(
+        @PathVariable runId: String,
+    ): EntityModel<BreedResearch> {
+        log.info { "Fetching breed research with runId: $runId" }
+        val research = breedResearchRepository.fetchAllSuccessfulResearch()
+            .find { it.runId == runId }
+            ?.toBreedResearch()
+            ?: throw org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.NOT_FOUND,
+                "Research record with ID $runId not found"
+            )
+
+        return EntityModel.of(research).apply {
+            add(linkTo(methodOn(BreedResearchController::class.java).getResearchById(runId)).withSelfRel())
+            add(linkTo(methodOn(BreedResearchController::class.java).getAllBreedResearch()).withRel("research"))
+            add(linkTo(methodOn(BreedResearchController::class.java).getBreedResearchHistory(research.breedId)).withRel("breed-history"))
         }
     }
 
@@ -126,13 +169,8 @@ class BreedResearchController(
         ],
     )
     @GetMapping("/status")
-    fun getAgentStatus(): Map<String, Any> {
-        val isReady = breedResearchAgent.isReady()
-        return mapOf(
-            "ready" to isReady,
-            "status" to if (isReady) "operational" else "unavailable",
-            "message" to if (isReady) "Agent is ready to research breeds" else "Agent is not configured. Check API key."
-        )
+    fun getAgentStatus(): AgentStatus {
+        return AgentStatus.forAgent("Breed Research Agent", breedResearchAgent.isReady())
     }
 
     private fun BreedResearchRecord.toBreedResearch() = BreedResearch(
