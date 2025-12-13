@@ -73,6 +73,7 @@ class BreedController(
                     description = breed.description,
                     imageUrl = breed.imageUrl,
                     eggNumber = breed.numEggs,
+                    sources = breed.sources,
                 ),
             )
             model.add(linkTo(BreedController::class.java).slash(breed.id).withSelfRel())
@@ -132,6 +133,7 @@ class BreedController(
                     temperament = it.temperament,
                     description = it.description,
                     imageUrl = it.imageUrl,
+                    sources = it.sources,
                 ),
             )
             model.add(linkTo(BreedController::class.java).slash(id).withSelfRel())
@@ -182,4 +184,5 @@ data class Breed(
     val temperament: String?,
     val description: String?,
     val imageUrl: String?,
+    val sources: List<String>?,
 )
