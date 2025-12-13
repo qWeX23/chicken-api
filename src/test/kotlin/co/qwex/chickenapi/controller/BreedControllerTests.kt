@@ -29,13 +29,13 @@ class BreedControllerTests {
     private fun mockBreedListResponse(values: List<List<Any>>) {
         val valueRange = ValueRange().setValues(values)
         Mockito.`when`(
-            sheets.spreadsheets().values().get(anyString(), Mockito.eq("breeds!A1:J")).execute(),
+            sheets.spreadsheets().values().get(anyString(), Mockito.eq("breeds!A1:K")).execute(),
         ).thenReturn(valueRange)
     }
 
     private fun mockBreedByIdResponse(id: Int, values: List<List<Any>>) {
         val valueRange = ValueRange().setValues(values)
-        val range = "breeds!A${id + 1}:J${id + 1}"
+        val range = "breeds!A${id + 1}:K${id + 1}"
         Mockito.`when`(
             sheets.spreadsheets().values().get(anyString(), Mockito.eq(range)).execute(),
         ).thenReturn(valueRange)
