@@ -8,6 +8,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import mu.KotlinLogging
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import java.time.Duration
@@ -22,6 +23,11 @@ data class ChickenFactJson(
 )
 
 @Service
+@ConditionalOnProperty(
+    name = ["koog.agent.scheduler.enabled"],
+    havingValue = "true",
+    matchIfMissing = true,
+)
 class ChickenFactResearcherScheduledTaskService(
     private val koogChickenFactsAgent: KoogChickenFactsAgent,
     private val chickenFactsRepository: ChickenFactsRepository,
@@ -30,8 +36,7 @@ class ChickenFactResearcherScheduledTaskService(
     private val log = KotlinLogging.logger {}
     private val json = Json { ignoreUnknownKeys = true }
 
-    //@Scheduled(cron = "0 0 0 * * *") // Midnight every day
-    @Scheduled( fixedRate = 43200000) // every 12 hours
+    @Scheduled(cron = "\${koog.agent.scheduler.cron:0 30 0 * * *}") // Default: 12:30 AM daily
     fun runDailyChickenFactResearcherTask() {
         log.info { "Chicken Fact Researcher scheduled task started at: ${LocalDateTime.now()}" }
         if (!koogChickenFactsAgent.isReady()) {

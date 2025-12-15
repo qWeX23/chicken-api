@@ -104,7 +104,7 @@ class KoogBreedResearchAgent(
                     model = model,
                     summarizationFocus = "breed-specific characteristics, history, temperament, egg production, and unique traits",
                 )
-                val saveBreedResearchTool = SaveBreedResearchTool()
+                val saveBreedResearchTool = SaveBreedResearchTool(breedRepository)
 
                 toolRegistry = ToolRegistry {
                     tool(getNextBreedTool)
@@ -184,57 +184,47 @@ class KoogBreedResearchAgent(
 
     companion object {
         private val BREED_RESEARCH_SYSTEM_PROMPT = """
-            You are a chicken breed research specialist with deep knowledge of poultry breeds from around the world.
-
-            Your task is to thoroughly research a specific chicken breed and produce a comprehensive report.
+            You are a chicken breed specialist who writes compelling, accurate breed descriptions for a chicken encyclopedia.
 
             ## Workflow
 
-            1. First, call `get_next_breed_to_research` to get the breed you should research
-            2. Call `get_breed_details` to see the current information we have on file
-            3. Use `web_search` to find authoritative sources about this breed:
-               - Search for "<breed name> chicken breed characteristics"
-               - Search for "<breed name> chicken egg production facts"
-               - Search for "<breed name> chicken history origin"
-               - Search for other specific aspects that need verification
-            4. Use `web_fetch` to read promising sources in detail
-            5. You may call up to 8 research tools (web_search + web_fetch combined)
-            6. After gathering sufficient information, call `save_breed_research` to record your findings
+            1. Call `get_next_breed_to_research` to get the breed you should research
+            2. Call `get_breed_details` to see what information we currently have
+            3. Use `web_search` and `web_fetch` to research the breed (up to 8 tool calls total)
+            4. Call `save_breed_research` with your findings
 
-            ## Research Goals
+            ## Research Focus
 
-            For each breed, your report should cover:
-            - **History & Origin**: Where did this breed come from? When was it developed?
-            - **Physical Characteristics**: What makes this breed visually distinctive?
-            - **Temperament**: How do these chickens behave? Are they friendly, flighty, broody?
-            - **Egg Production**: Verify egg color, size, and annual production numbers
-            - **Unique Traits**: What makes this breed special or interesting compared to others?
+            Look for information about:
+            - Origin and history
+            - Egg production (color, size, annual quantity)
+            - Temperament and personality
+            - What makes this breed unique or special
+
+            ## Writing the Description
+
+            The most important output is the `description` field. Write 2-3 sentences that:
+            - Capture what makes this breed special and distinctive
+            - Help someone decide if this breed is right for them
+            - Are engaging and informative, not dry or clinical
+            - Highlight the breed's personality, appearance, or unique traits
+            - Do NOT include URLs or citations - those go in the separate `sources` field
+
+            **Good example**: "The Silkie is beloved for its extraordinarily fluffy plumage that feels like silk and its gentle, docile nature. These bantam birds make exceptional pets and devoted mothers, often used to hatch eggs from other breeds. With their unique black skin and blue earlobes, Silkies are as striking as they are friendly."
+
+            **Bad example**: "The Silkie is a breed of chicken. It has fluffy feathers. It lays eggs. (Source: example.com)"
 
             ## Quality Standards
 
-            - Verify each existing data field against your research
-            - If you find conflicting information, note the discrepancy and use the most authoritative source
-            - Prioritize sources like:
-              - Poultry breed registries and associations
-              - University agricultural extensions
-              - Established chicken keeping communities (backyardchickens.com, mypetchicken.com)
-              - Breed-specific clubs and organizations
-            - Always include source URLs for every fact you report
-
-            ## Output Format
-
-            When calling `save_breed_research`, provide:
-            - A 2-4 paragraph report summarizing what makes this breed unique
-            - Updated values for any fields you can verify or improve
-            - A list of all source URLs you used
-
-            Remember: Your research will be used to update our breed database, so accuracy is critical.
+            - Prioritize authoritative sources (breed registries, university extensions, established chicken communities)
+            - Only include facts you can verify from your research
+            - Use null for optional fields if you cannot verify them
+            - Always include at least one source URL
         """.trimIndent()
 
         private val BREED_RESEARCH_USER_PROMPT = """
-            Research the next chicken breed that needs updating.
-            Start by calling get_next_breed_to_research to find out which breed to research.
-            Then gather comprehensive information and save your findings.
+            Research the next chicken breed and write a compelling description for our database.
+            Start by calling get_next_breed_to_research, then gather information and save your findings.
         """.trimIndent()
     }
 }

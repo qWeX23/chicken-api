@@ -150,61 +150,161 @@ class GetBreedDetailsTool(
 /**
  * Tool for saving the complete research findings for a breed.
  * This is the final tool that should be called to save research results.
+ * Saves directly to the breed repository.
  */
-class SaveBreedResearchTool : SimpleTool<SaveBreedResearchTool.Args>() {
+class SaveBreedResearchTool(
+    private val breedRepository: BreedRepository,
+) : SimpleTool<SaveBreedResearchTool.Args>() {
 
     @Serializable
     data class Args(
         @property:LLMDescription("The breed ID being researched")
         val breedId: Int,
 
-        @property:LLMDescription("Full research report (2-4 paragraphs) about what makes this breed unique, covering history, characteristics, temperament, and interesting facts")
-        val report: String,
+        @property:LLMDescription(
+            "A compelling 2-3 sentence description of what makes this breed unique and special. " +
+                "Should highlight the breed's most distinctive traits, personality, and appeal to chicken keepers. " +
+                "Write in an engaging style that would help someone decide if this breed is right for them. " +
+                "Do NOT include URLs or citations in the description - put those in the sources field instead.",
+        )
+        val description: String,
 
         @property:LLMDescription("Updated/verified origin (country or region). Use null if unable to verify.")
         val origin: String? = null,
 
-        @property:LLMDescription("Updated/verified egg color. Use null if unable to verify.")
+        @property:LLMDescription("Updated/verified egg color (e.g., 'Brown', 'White', 'Blue', 'Green', 'Cream'). Use null if unable to verify.")
         val eggColor: String? = null,
 
-        @property:LLMDescription("Updated/verified egg size (small, medium, large, extra-large). Use null if unable to verify.")
+        @property:LLMDescription("Updated/verified egg size: Small, Medium, Large, or Extra-Large. Use null if unable to verify.")
         val eggSize: String? = null,
 
-        @property:LLMDescription("Updated/verified temperament description. Use null if unable to verify.")
+        @property:LLMDescription("Brief temperament description (e.g., 'Docile and friendly', 'Active and flighty', 'Calm and broody'). Use null if unable to verify.")
         val temperament: String? = null,
 
-        @property:LLMDescription("Updated/enriched description of the breed. Use null if unable to improve.")
-        val description: String? = null,
-
-        @property:LLMDescription("Updated/verified annual egg production number. Use null if unable to verify.")
+        @property:LLMDescription("Updated/verified average annual egg production number (e.g., 250 for good layers, 150 for moderate). Use null if unable to verify.")
         val numEggs: Int? = null,
 
-        @property:LLMDescription("List of source URLs that were used to verify information. Must include at least one source.")
+        @property:LLMDescription("List of source URLs used to verify the information. Include at least one authoritative source.")
+        val sources: List<String>,
+    )
+
+    @Serializable
+    data class Result(
+        val success: Boolean,
+        val breedId: Int,
+        val breedName: String,
+        val fieldsUpdated: List<String>,
+        val error: String? = null,
+        // The actual data that was saved (null on failure)
+        val savedData: SavedBreedData? = null,
+    )
+
+    @Serializable
+    data class SavedBreedData(
+        val description: String,
+        val origin: String?,
+        val eggColor: String?,
+        val eggSize: String?,
+        val temperament: String?,
+        val numEggs: Int?,
         val sources: List<String>,
     )
 
     override val argsSerializer = Args.serializer()
     override val name = "save_breed_research"
     override val description = """
-        Saves the complete research findings for a chicken breed.
-        This tool should be called once you have:
-        1. Thoroughly researched the breed using web_search and web_fetch
-        2. Written a comprehensive report (2-4 paragraphs) about what makes it unique
-        3. Verified existing data points and found any corrections needed
-        4. Collected source URLs for all facts
+        Saves the research findings for a chicken breed to the database.
+        Call this tool after researching the breed with web_search and web_fetch.
 
-        The report should cover: history/origin, physical characteristics, temperament,
-        egg production, and any unique or interesting facts about the breed.
+        Required:
+        - description: A compelling 2-3 sentence summary of what makes this breed unique
+        - sources: At least one URL you used for research
 
-        Include source URLs for every piece of information you report.
+        Optional (provide if you found verified information):
+        - origin: Country or region of origin
+        - eggColor: Color of eggs (Brown, White, Blue, etc.)
+        - eggSize: Small, Medium, Large, or Extra-Large
+        - temperament: Brief personality description
+        - numEggs: Average annual egg production
     """.trimIndent()
 
     override suspend fun doExecute(args: Args): String {
         log.info { "Saving breed research for breed ID: ${args.breedId}" }
-        log.info { "Report length: ${args.report.length} chars, Sources: ${args.sources.size}" }
+        log.info { "Description length: ${args.description.length} chars, Sources: ${args.sources.size}" }
 
-        // The actual saving/updating will happen in the scheduled task service
-        // This tool just validates and returns the structured data
-        return json.encodeToString(Args.serializer(), args)
+        val existingBreed = breedRepository.getBreedById(args.breedId)
+        if (existingBreed == null) {
+            log.error { "Breed not found with ID: ${args.breedId}" }
+            return json.encodeToString(
+                Result.serializer(),
+                Result(
+                    success = false,
+                    breedId = args.breedId,
+                    breedName = "UNKNOWN",
+                    fieldsUpdated = emptyList(),
+                    error = "Breed not found with ID ${args.breedId}",
+                ),
+            )
+        }
+
+        // Determine which fields are being updated
+        val fieldsUpdated = mutableListOf<String>()
+        if (args.description != existingBreed.description) fieldsUpdated.add("description")
+        if (args.origin != null && args.origin != existingBreed.origin) fieldsUpdated.add("origin")
+        if (args.eggColor != null && args.eggColor != existingBreed.eggColor) fieldsUpdated.add("eggColor")
+        if (args.eggSize != null && args.eggSize != existingBreed.eggSize) fieldsUpdated.add("eggSize")
+        if (args.temperament != null && args.temperament != existingBreed.temperament) fieldsUpdated.add("temperament")
+        if (args.numEggs != null && args.numEggs != existingBreed.numEggs) fieldsUpdated.add("numEggs")
+        if (args.sources.isNotEmpty()) fieldsUpdated.add("sources")
+
+        // Build updated breed
+        val updatedBreed = Breed(
+            id = existingBreed.id,
+            name = existingBreed.name,
+            origin = args.origin ?: existingBreed.origin,
+            eggColor = args.eggColor ?: existingBreed.eggColor,
+            eggSize = args.eggSize ?: existingBreed.eggSize,
+            temperament = args.temperament ?: existingBreed.temperament,
+            description = args.description, // Always use new description
+            imageUrl = existingBreed.imageUrl,
+            numEggs = args.numEggs ?: existingBreed.numEggs,
+            updatedAt = null, // Will be set by repository
+            sources = args.sources.ifEmpty { existingBreed.sources },
+        )
+
+        return try {
+            breedRepository.update(updatedBreed)
+            log.info { "Successfully updated breed '${existingBreed.name}' with fields: $fieldsUpdated" }
+            json.encodeToString(
+                Result.serializer(),
+                Result(
+                    success = true,
+                    breedId = args.breedId,
+                    breedName = existingBreed.name,
+                    fieldsUpdated = fieldsUpdated,
+                    savedData = SavedBreedData(
+                        description = updatedBreed.description ?: "",
+                        origin = updatedBreed.origin,
+                        eggColor = updatedBreed.eggColor,
+                        eggSize = updatedBreed.eggSize,
+                        temperament = updatedBreed.temperament,
+                        numEggs = updatedBreed.numEggs,
+                        sources = updatedBreed.sources ?: emptyList(),
+                    ),
+                ),
+            )
+        } catch (ex: Exception) {
+            log.error(ex) { "Failed to update breed ${args.breedId}" }
+            json.encodeToString(
+                Result.serializer(),
+                Result(
+                    success = false,
+                    breedId = args.breedId,
+                    breedName = existingBreed.name,
+                    fieldsUpdated = emptyList(),
+                    error = "Failed to save: ${ex.message}",
+                ),
+            )
+        }
     }
 }

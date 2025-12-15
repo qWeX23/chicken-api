@@ -2,7 +2,10 @@ package co.qwex.chickenapi.service
 
 import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class BreedResearchJsonParsingTests {
@@ -10,116 +13,193 @@ class BreedResearchJsonParsingTests {
     private val json = Json { ignoreUnknownKeys = true }
 
     @Test
-    fun `parses complete breed research JSON with all fields`() {
+    fun `parses successful save breed research result`() {
         val jsonString = """
             {
+                "success": true,
                 "breedId": 5,
-                "report": "The Silkie is a unique breed known for its fluffy plumage that feels like silk. Originally from China, this ornamental breed has a calm and friendly disposition.",
-                "origin": "China",
-                "eggColor": "Cream to tinted",
-                "eggSize": "Small",
-                "temperament": "Docile, friendly, and broody",
-                "description": "A distinctive ornamental breed with fluffy silk-like plumage, black skin, and blue earlobes.",
-                "numEggs": 120,
-                "sources": [
-                    "https://www.backyardchickens.com/silkie",
-                    "https://www.mypetchicken.com/silkie-breed"
-                ]
+                "breedName": "Silkie",
+                "fieldsUpdated": ["origin", "eggColor", "temperament"],
+                "error": null
             }
         """.trimIndent()
 
-        val parsed = json.decodeFromString<BreedResearchJson>(jsonString)
+        val parsed = json.decodeFromString<SaveBreedResearchResult>(jsonString)
 
+        assertTrue(parsed.success)
         assertEquals(5, parsed.breedId)
-        assertEquals("China", parsed.origin)
-        assertEquals("Cream to tinted", parsed.eggColor)
-        assertEquals("Small", parsed.eggSize)
-        assertEquals("Docile, friendly, and broody", parsed.temperament)
-        assertEquals(120, parsed.numEggs)
-        assertEquals(2, parsed.sources.size)
-        assertEquals("https://www.backyardchickens.com/silkie", parsed.sources[0])
+        assertEquals("Silkie", parsed.breedName)
+        assertEquals(3, parsed.fieldsUpdated.size)
+        assertEquals("origin", parsed.fieldsUpdated[0])
+        assertNull(parsed.error)
     }
 
     @Test
-    fun `parses breed research JSON with optional fields null`() {
+    fun `parses failed save breed research result`() {
         val jsonString = """
             {
+                "success": false,
                 "breedId": 3,
-                "report": "The Leghorn is an excellent layer known for high egg production.",
-                "sources": ["https://example.com/leghorn"]
+                "breedName": "Unknown",
+                "fieldsUpdated": [],
+                "error": "Breed not found with ID 3"
             }
         """.trimIndent()
 
-        val parsed = json.decodeFromString<BreedResearchJson>(jsonString)
+        val parsed = json.decodeFromString<SaveBreedResearchResult>(jsonString)
 
+        assertFalse(parsed.success)
         assertEquals(3, parsed.breedId)
-        assertEquals("The Leghorn is an excellent layer known for high egg production.", parsed.report)
-        assertNull(parsed.origin)
-        assertNull(parsed.eggColor)
-        assertNull(parsed.eggSize)
-        assertNull(parsed.temperament)
-        assertNull(parsed.description)
-        assertNull(parsed.numEggs)
-        assertEquals(1, parsed.sources.size)
+        assertEquals("Unknown", parsed.breedName)
+        assertEquals(0, parsed.fieldsUpdated.size)
+        assertEquals("Breed not found with ID 3", parsed.error)
     }
 
     @Test
-    fun `parses breed research JSON with empty sources list`() {
+    fun `parses save result with empty fields updated`() {
         val jsonString = """
             {
+                "success": true,
                 "breedId": 1,
-                "report": "Test report",
-                "sources": []
+                "breedName": "Leghorn",
+                "fieldsUpdated": []
             }
         """.trimIndent()
 
-        val parsed = json.decodeFromString<BreedResearchJson>(jsonString)
+        val parsed = json.decodeFromString<SaveBreedResearchResult>(jsonString)
 
+        assertTrue(parsed.success)
         assertEquals(1, parsed.breedId)
-        assertEquals("Test report", parsed.report)
-        assertEquals(0, parsed.sources.size)
+        assertEquals("Leghorn", parsed.breedName)
+        assertEquals(0, parsed.fieldsUpdated.size)
+        assertNull(parsed.error)
     }
 
     @Test
-    fun `parses breed research JSON with mixed null and present fields`() {
+    fun `parses save result with all field types updated`() {
         val jsonString = """
             {
+                "success": true,
                 "breedId": 2,
-                "report": "Plymouth Rock is a versatile breed.",
-                "origin": "USA",
-                "eggColor": null,
-                "eggSize": "Large",
-                "temperament": null,
-                "numEggs": 280,
-                "sources": ["https://example.com"]
+                "breedName": "Plymouth Rock",
+                "fieldsUpdated": ["origin", "eggColor", "eggSize", "temperament", "description", "numEggs", "sources"]
             }
         """.trimIndent()
 
-        val parsed = json.decodeFromString<BreedResearchJson>(jsonString)
+        val parsed = json.decodeFromString<SaveBreedResearchResult>(jsonString)
 
+        assertTrue(parsed.success)
         assertEquals(2, parsed.breedId)
-        assertEquals("USA", parsed.origin)
-        assertNull(parsed.eggColor)
-        assertEquals("Large", parsed.eggSize)
-        assertNull(parsed.temperament)
-        assertEquals(280, parsed.numEggs)
+        assertEquals("Plymouth Rock", parsed.breedName)
+        assertEquals(7, parsed.fieldsUpdated.size)
+        assertTrue(parsed.fieldsUpdated.contains("sources"))
     }
 
     @Test
     fun `handles extra unknown fields in JSON gracefully`() {
         val jsonString = """
             {
+                "success": true,
                 "breedId": 1,
-                "report": "Test",
-                "sources": [],
+                "breedName": "Test",
+                "fieldsUpdated": [],
                 "unknownField": "should be ignored",
                 "anotherUnknown": 123
             }
         """.trimIndent()
 
-        val parsed = json.decodeFromString<BreedResearchJson>(jsonString)
+        val parsed = json.decodeFromString<SaveBreedResearchResult>(jsonString)
 
+        assertTrue(parsed.success)
         assertEquals(1, parsed.breedId)
-        assertEquals("Test", parsed.report)
+        assertEquals("Test", parsed.breedName)
+    }
+
+    @Test
+    fun `parses result with savedData containing all breed fields`() {
+        val jsonString = """
+            {
+                "success": true,
+                "breedId": 5,
+                "breedName": "Silkie",
+                "fieldsUpdated": ["description", "origin", "eggColor", "temperament", "sources"],
+                "savedData": {
+                    "description": "The Silkie is beloved for its fluffy plumage and gentle nature.",
+                    "origin": "China",
+                    "eggColor": "Cream",
+                    "eggSize": "Small",
+                    "temperament": "Docile and friendly",
+                    "numEggs": 120,
+                    "sources": ["https://example.com/silkie", "https://poultry.org/silkie"]
+                }
+            }
+        """.trimIndent()
+
+        val parsed = json.decodeFromString<SaveBreedResearchResult>(jsonString)
+
+        assertTrue(parsed.success)
+        assertEquals(5, parsed.breedId)
+        assertEquals("Silkie", parsed.breedName)
+        assertEquals(5, parsed.fieldsUpdated.size)
+
+        val savedData = parsed.savedData
+        assertNotNull(savedData)
+        assertEquals("The Silkie is beloved for its fluffy plumage and gentle nature.", savedData!!.description)
+        assertEquals("China", savedData.origin)
+        assertEquals("Cream", savedData.eggColor)
+        assertEquals("Small", savedData.eggSize)
+        assertEquals("Docile and friendly", savedData.temperament)
+        assertEquals(120, savedData.numEggs)
+        assertEquals(2, savedData.sources.size)
+        assertEquals("https://example.com/silkie", savedData.sources[0])
+    }
+
+    @Test
+    fun `parses result with savedData containing only required fields`() {
+        val jsonString = """
+            {
+                "success": true,
+                "breedId": 3,
+                "breedName": "Leghorn",
+                "fieldsUpdated": ["description", "sources"],
+                "savedData": {
+                    "description": "The Leghorn is an excellent layer known for prolific egg production.",
+                    "sources": ["https://example.com/leghorn"]
+                }
+            }
+        """.trimIndent()
+
+        val parsed = json.decodeFromString<SaveBreedResearchResult>(jsonString)
+
+        assertTrue(parsed.success)
+        val savedData = parsed.savedData
+        assertNotNull(savedData)
+        assertEquals("The Leghorn is an excellent layer known for prolific egg production.", savedData!!.description)
+        assertNull(savedData.origin)
+        assertNull(savedData.eggColor)
+        assertNull(savedData.eggSize)
+        assertNull(savedData.temperament)
+        assertNull(savedData.numEggs)
+        assertEquals(1, savedData.sources.size)
+    }
+
+    @Test
+    fun `parses failed result without savedData`() {
+        val jsonString = """
+            {
+                "success": false,
+                "breedId": 99,
+                "breedName": "UNKNOWN",
+                "fieldsUpdated": [],
+                "error": "Breed not found with ID 99",
+                "savedData": null
+            }
+        """.trimIndent()
+
+        val parsed = json.decodeFromString<SaveBreedResearchResult>(jsonString)
+
+        assertFalse(parsed.success)
+        assertEquals("Breed not found with ID 99", parsed.error)
+        assertNull(parsed.savedData)
     }
 }
