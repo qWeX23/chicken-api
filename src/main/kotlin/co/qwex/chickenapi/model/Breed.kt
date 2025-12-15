@@ -13,4 +13,5 @@ data class Breed(
     val imageUrl: String?,
     val numEggs: Int?,
     val updatedAt: Instant? = null,
+    val sources: List<String>? = null,
 )

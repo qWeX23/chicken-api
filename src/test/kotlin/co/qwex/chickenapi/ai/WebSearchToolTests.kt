@@ -1,5 +1,6 @@
 package co.qwex.chickenapi.ai
 
+import co.qwex.chickenapi.ai.tools.WebSearchTool
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
