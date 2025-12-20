@@ -8,6 +8,7 @@ import ai.koog.agents.core.dsl.extension.nodeLLMRequest
 import ai.koog.agents.core.dsl.extension.nodeLLMSendToolResult
 import ai.koog.agents.core.dsl.extension.onAssistantMessage
 import ai.koog.agents.core.dsl.extension.onToolCall
+import ai.koog.agents.core.environment.ReceivedToolResult
 import mu.KotlinLogging
 
 private val log = KotlinLogging.logger {}
@@ -21,12 +22,14 @@ private val log = KotlinLogging.logger {}
 fun breedResearchStrategy(
     maxToolCalls: Int = 8,
 ): AIAgentGraphStrategy<String, String> = strategy<String, String>("breed_research") {
-    // Per-run tool call counter (reset at start node)
+    // Per-run state (reset at start node)
     var toolCalls = 0
+    var savedResearchJson: String? = null
 
-    // 1) Reset counter on each run
+    // 1) Reset state on each run
     val resetState by node<String, String>("reset_state") { input ->
         toolCalls = 0
+        savedResearchJson = null
         log.info { "Starting new breed research run, state reset" }
         input
     }
@@ -40,19 +43,31 @@ fun breedResearchStrategy(
     // 3) Tool execution
     val executeTool by nodeExecuteTool()
 
-    // 4) Send tool result to LLM
+    // 4) Capture save_breed_research tool result
+    val captureToolResult by node<ReceivedToolResult, ReceivedToolResult>("capture_tool_result") { toolResult ->
+        val result = toolResult.result.toString()
+        if (result.contains("\"success\"") && result.contains("\"breedId\"")) {
+            savedResearchJson = result
+            log.info { "Captured save_breed_research result" }
+        }
+        toolResult
+    }
+
+    // 5) Send tool result to LLM
     val sendToolResult by nodeLLMSendToolResult()
 
-    // 5) "Force final answer" node (tells LLM to call save_breed_research)
+    // 6) "Force final answer" node (tells LLM to call save_breed_research)
     val requestSaveResearch by nodeLLMRequest(
         name = "request_save_research",
         allowToolCalls = true,
     )
 
-    // 6) Return node (agent finished)
-    val returnResult by node<String, String>("return_result") { message ->
-        log.info { "Agent finished with message: ${message.take(100)}..." }
-        message
+    // 7) Return node (agent finished) - returns captured JSON or empty
+    val returnResult by node<String, String>("return_result") { _ ->
+        savedResearchJson ?: run {
+            log.warn { "No saved research found, returning empty result" }
+            "{}"
+        }
     }
 
     // ─────────────────────────────
@@ -100,8 +115,9 @@ fun breedResearchStrategy(
     )
     edge(returnResult forwardTo nodeFinish)
 
-    // executeTool → sendToolResult → back to LLM
-    edge(executeTool forwardTo sendToolResult)
+    // executeTool → captureToolResult → sendToolResult → back to LLM
+    edge(executeTool forwardTo captureToolResult)
+    edge(captureToolResult forwardTo sendToolResult)
 
     // sendToolResult: tool call under cap → execute (loop)
     edge(
