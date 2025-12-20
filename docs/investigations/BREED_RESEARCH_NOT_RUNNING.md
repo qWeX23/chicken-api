@@ -2,14 +2,61 @@
 
 **Date**: 2025-12-20
 **Branch**: `claude/investigate-breed-research-uyq5H`
+**Status**: Updated with new findings
 
 ## Summary
 
-The breed research agent has not executed because the `OLLAMA_API_KEY` environment variable is not set. Without this API key, the agent cannot initialize its LLM connection and marks itself as "not ready", causing the scheduled task to skip execution.
+The breed research agent runs but produces **no actionable output** due to a bug in `BreedResearchStrategy`. The strategy does not capture the `save_breed_research` tool result, causing the scheduled task to fail when parsing the agent's response.
 
 ## Root Causes
 
-### 1. Missing `OLLAMA_API_KEY` Environment Variable (Primary Cause)
+### 1. BreedResearchStrategy Does Not Capture Tool Results (Primary Cause - BUG)
+
+**Symptom**: Log shows `"Breed research agent returned no actionable output."`
+
+**Root Cause**: The `BreedResearchStrategy` returns the LLM's final assistant message instead of the `save_breed_research` tool result JSON.
+
+**Comparison with Working Implementation**:
+
+`ChickenResearchStrategy.kt` (WORKS) has a `captureToolResult` node:
+```kotlin
+// Lines 48-56: Captures the tool result
+val captureToolResult by node<ReceivedToolResult, ReceivedToolResult>("capture_tool_result") { toolResult ->
+    val result = toolResult.result.toString()
+    if (result.contains("\"fact\"") && result.contains("\"sourceUrl\"")) {
+        savedFactJson = result  // <-- Stores the JSON
+    }
+    toolResult
+}
+
+// Lines 67-72: Returns the captured JSON
+val returnResult by node<String, String>("return_result") { _ ->
+    savedFactJson ?: "{}"  // <-- Returns saved tool result, NOT LLM message
+}
+```
+
+`BreedResearchStrategy.kt` (BROKEN) is missing this:
+```kotlin
+// Lines 53-56: Just passes through the LLM's message
+val returnResult by node<String, String>("return_result") { message ->
+    log.info { "Agent finished with message: ${message.take(100)}..." }
+    message  // <-- Returns LLM's text, NOT the tool result JSON!
+}
+```
+
+**What Happens**:
+1. Agent calls `save_breed_research` tool → tool saves to database and returns JSON
+2. JSON result is sent to LLM via `sendToolResult`
+3. LLM responds with text like "I've saved the research for the Silkie breed"
+4. Strategy returns this text message (not the JSON)
+5. `extractSaveResultJson()` fails to find JSON in the text
+6. Outcome is set to `NO_OUTPUT`
+
+**Fix Required**: Add a `captureToolResult` node to `BreedResearchStrategy` that intercepts and stores the `save_breed_research` JSON result, similar to `ChickenResearchStrategy`.
+
+---
+
+### 2. Missing `OLLAMA_API_KEY` Environment Variable (Secondary - If Agent Not Ready)
 
 **Evidence**:
 - `application.properties:39`: `koog.breed-research-agent.api-key=${OLLAMA_API_KEY:}`
@@ -53,8 +100,9 @@ The scheduler runs only at midnight UTC daily (`0 0 0 * * *`). There is currentl
 - [x] Cron expression is valid (`0 0 0 * * *` = midnight daily)
 - [x] All required tools are registered in `ToolRegistry`
 - [x] Google Sheets persistence is implemented
-- [ ] `OLLAMA_API_KEY` environment variable is set
-- [ ] LLM backend is accessible at configured base URL
+- [x] `OLLAMA_API_KEY` environment variable is set (agent runs)
+- [x] LLM backend is accessible (agent executes)
+- [ ] **BUG**: `BreedResearchStrategy` captures `save_breed_research` result
 
 ## Required Configuration
 
@@ -77,30 +125,58 @@ The scheduler runs only at midnight UTC daily (`0 0 0 * * *`). There is currentl
 
 ## Recommendations
 
-### Immediate Actions
+### Immediate Actions (Required to Fix)
 
-1. **Set `OLLAMA_API_KEY`** in the deployment environment
+1. **Fix `BreedResearchStrategy` to capture tool results** - Add a `captureToolResult` node:
+   ```kotlin
+   // Add variable to store result
+   var savedResearchJson: String? = null
+
+   // Add capture node after executeTool
+   val captureToolResult by node<ReceivedToolResult, ReceivedToolResult>("capture_tool_result") { toolResult ->
+       val result = toolResult.result.toString()
+       if (result.contains("\"success\"") && result.contains("\"breedId\"")) {
+           savedResearchJson = result
+           log.info { "Captured save_breed_research result" }
+       }
+       toolResult
+   }
+
+   // Update returnResult to use captured JSON
+   val returnResult by node<String, String>("return_result") { _ ->
+       savedResearchJson ?: run {
+           log.warn { "No saved research found, returning empty result" }
+           "{}"
+       }
+   }
+
+   // Update edge: executeTool forwardTo captureToolResult
+   // Update edge: captureToolResult forwardTo sendToolResult
+   ```
+
+### Secondary Actions (If Agent Not Ready)
+
+1. **Verify `OLLAMA_API_KEY`** is set in the deployment environment
 2. **Verify LLM connectivity** - ensure the Ollama-compatible endpoint is reachable
-3. **Review application logs** for startup warnings about missing API key
 
 ### Future Improvements
 
-1. **Add manual trigger endpoint** - Allow on-demand breed research for testing:
-   ```kotlin
-   @PostMapping("/api/v1/breed-research/trigger")
-   fun triggerResearch(): ResponseEntity<String>
-   ```
-
+1. **Add manual trigger endpoint** - Allow on-demand breed research for testing
 2. **Health check for agent readiness** - Expose `isReady()` status in actuator health endpoint
-
-3. **Startup validation** - Fail fast if critical configuration is missing rather than silently skipping
+3. **Startup validation** - Fail fast if critical configuration is missing
 
 ## Files Analyzed
 
 | File | Purpose |
 |------|---------|
-| `src/main/resources/application.properties` | Configuration defaults |
+| `src/main/kotlin/.../ai/BreedResearchStrategy.kt` | **BUG LOCATION** - Missing tool result capture |
+| `src/main/kotlin/.../ai/ChickenResearchStrategy.kt` | Working reference implementation |
+| `src/main/kotlin/.../service/BreedResearcherScheduledTaskService.kt` | Scheduled task and JSON extraction |
 | `src/main/kotlin/.../ai/KoogBreedResearchAgent.kt` | Agent initialization and execution |
-| `src/main/kotlin/.../service/BreedResearcherScheduledTaskService.kt` | Scheduled task runner |
-| `src/main/kotlin/.../config/BreedResearchAgentProperties.kt` | Configuration properties class |
+| `src/main/kotlin/.../ai/tools/BreedResearchTools.kt` | Tool implementations |
+| `src/main/resources/application.properties` | Configuration defaults |
 | `src/main/kotlin/.../ChickenApiApplication.kt` | `@EnableScheduling` verification |
+
+## Conclusion
+
+The agent IS running successfully and saving data to Google Sheets (via `SaveBreedResearchTool`), but the scheduled task cannot parse the result because `BreedResearchStrategy` returns the LLM's conversational response instead of the tool's JSON output. This is a code bug, not a configuration issue.
