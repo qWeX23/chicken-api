@@ -20,17 +20,11 @@ import co.qwex.chickenapi.config.BreedResearchAgentProperties
 import co.qwex.chickenapi.repository.BreedRepository
 import io.github.oshai.kotlinlogging.KotlinLogging as OshaiKotlinLogging
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.defaultRequest
-import io.ktor.client.request.header
-import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
-import io.ktor.http.contentType
-import io.ktor.serialization.kotlinx.json.json
+import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
-import kotlinx.serialization.json.Json
 import mu.KotlinLogging
+import org.springframework.beans.factory.ObjectProvider
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
 
 /**
@@ -42,117 +36,124 @@ import org.springframework.stereotype.Service
 class KoogBreedResearchAgent(
     private val properties: BreedResearchAgentProperties,
     private val breedRepository: BreedRepository,
+    @Qualifier("koogBreedResearchHttpClient")
+    private val httpClientProvider: ObjectProvider<HttpClient>,
 ) {
     private val log = KotlinLogging.logger {}
-    private val json = Json { ignoreUnknownKeys = true }
     private val sanitizedBaseUrl =
         properties.baseUrl.trim().removeSuffix("/").removeSuffix("/api")
 
-    private var ollamaHttpClient: HttpClient? = null
-    private var toolsHttpClient: HttpClient? = null
-    private var toolRegistry: ToolRegistry? = null
-    private var promptExecutor: SingleLLMPromptExecutor? = null
-    private var model: LLModel? = null
-    private var agentConfig: AIAgentConfig? = null
+    private var runtime: AgentRuntime? = null
 
-    init {
+    @PostConstruct
+    fun initialize() {
         if (!properties.enabled) {
             log.info { "Koog breed research agent disabled via configuration." }
-        } else {
-            val apiKey = properties.apiKey?.takeIf { it.isNotBlank() }
-            if (apiKey == null) {
-                log.warn { "koog.breed-research-agent.api-key is not set; Breed research agent will be skipped." }
-            } else {
-                val llmHttpClient = authorizedHttpClient(apiKey)
-                val webToolClient = authorizedHttpClient(apiKey)
-                ollamaHttpClient = llmHttpClient
-                toolsHttpClient = webToolClient
+            return
+        }
 
-                promptExecutor = SingleLLMPromptExecutor(
-                    OllamaClient(
-                        baseUrl = sanitizedBaseUrl,
-                        baseClient = llmHttpClient,
-                    ),
-                )
+        val clientId = properties.clientId?.takeIf { it.isNotBlank() }
+        val clientSecret = properties.clientSecret?.takeIf { it.isNotBlank() }
+        val missingFields =
+            listOfNotNull(
+                if (clientId == null) "koog.breed-research-agent.client-id" else null,
+                if (clientSecret == null) "koog.breed-research-agent.client-secret" else null,
+            )
+        if (missingFields.isNotEmpty()) {
+            log.warn { "${missingFields.joinToString()} is not set; Breed research agent will be skipped." }
+            return
+        }
 
-                model = LLModel(
-                    provider = LLMProvider.Ollama,
-                    id = properties.model,
-                    capabilities = listOf(
-                        LLMCapability.Temperature,
-                        LLMCapability.Tools,
-                        LLMCapability.Schema.JSON.Basic,
-                    ),
-                    contextLength = 131_072,
-                )
-
-                // Create tools
-                val getNextBreedTool = GetNextBreedToResearchTool(breedRepository)
-                val getBreedDetailsTool = GetBreedDetailsTool(breedRepository)
-                val webSearchTool = WebSearchTool(
-                    httpClient = webToolClient,
+        val llmHttpClient = httpClientProvider.getIfAvailable() ?: return
+        val webToolClient = llmHttpClient
+        val promptExecutor =
+            SingleLLMPromptExecutor(
+                OllamaClient(
                     baseUrl = sanitizedBaseUrl,
-                    defaultMaxResults = properties.webSearchMaxResults,
-                    promptExecutor = promptExecutor,
-                    model = model,
-                    summarizationFocus = "breed-specific facts, characteristics, history, temperament, and egg production details",
-                )
-                val webFetchTool = WebFetchTool(
-                    httpClient = webToolClient,
-                    baseUrl = sanitizedBaseUrl,
-                    promptExecutor = promptExecutor,
-                    model = model,
-                    summarizationFocus = "breed-specific characteristics, history, temperament, egg production, and unique traits",
-                )
-                val saveBreedResearchTool = SaveBreedResearchTool(breedRepository)
+                    baseClient = llmHttpClient,
+                ),
+            )
 
-                toolRegistry = ToolRegistry {
-                    tool(getNextBreedTool)
-                    tool(getBreedDetailsTool)
-                    tool(webSearchTool)
-                    tool(webFetchTool)
-                    tool(saveBreedResearchTool)
-                }
+        val model =
+            LLModel(
+                provider = LLMProvider.Ollama,
+                id = properties.model,
+                capabilities = listOf(
+                    LLMCapability.Temperature,
+                    LLMCapability.Tools,
+                    LLMCapability.Schema.JSON.Basic,
+                ),
+                contextLength = 131_072,
+            )
 
-                agentConfig = AIAgentConfig(
-                    prompt = prompt("breed_research_prompt") {
-                        system(BREED_RESEARCH_SYSTEM_PROMPT)
-                    },
-                    model = model!!,
-                    maxAgentIterations = properties.maxAgentIterations,
-                )
+        // Create tools
+        val getNextBreedTool = GetNextBreedToResearchTool(breedRepository)
+        val getBreedDetailsTool = GetBreedDetailsTool(breedRepository)
+        val webSearchTool =
+            WebSearchTool(
+                httpClient = webToolClient,
+                baseUrl = sanitizedBaseUrl,
+                defaultMaxResults = properties.webSearchMaxResults,
+                promptExecutor = promptExecutor,
+                model = model,
+                summarizationFocus = "breed-specific facts, characteristics, history, temperament, and egg production details",
+            )
+        val webFetchTool =
+            WebFetchTool(
+                httpClient = webToolClient,
+                baseUrl = sanitizedBaseUrl,
+                promptExecutor = promptExecutor,
+                model = model,
+                summarizationFocus = "breed-specific characteristics, history, temperament, egg production, and unique traits",
+            )
+        val saveBreedResearchTool = SaveBreedResearchTool(breedRepository)
 
-                log.info {
-                    "Koog breed research agent initialized with model ${properties.model} using base ${properties.baseUrl}"
-                }
+        val toolRegistry =
+            ToolRegistry {
+                tool(getNextBreedTool)
+                tool(getBreedDetailsTool)
+                tool(webSearchTool)
+                tool(webFetchTool)
+                tool(saveBreedResearchTool)
             }
+
+        val agentConfig =
+            AIAgentConfig(
+                prompt = prompt("breed_research_prompt") {
+                    system(BREED_RESEARCH_SYSTEM_PROMPT)
+                },
+                model = model,
+                maxAgentIterations = properties.maxAgentIterations,
+            )
+
+        runtime = AgentRuntime(llmHttpClient, webToolClient, toolRegistry, promptExecutor, model, agentConfig)
+        log.info {
+            "Koog breed research agent initialized with model ${properties.model} using base ${properties.baseUrl}"
         }
     }
 
     /**
      * Indicates whether the Koog agent is ready to accept runs.
      */
-    fun isReady(): Boolean = promptExecutor != null
+    fun isReady(): Boolean = runtime != null
 
     /**
      * Creates and runs a new agent instance to research a breed.
      * Returns the JSON output from save_breed_research tool.
      */
     suspend fun researchBreed(): String? {
-        val executor = promptExecutor ?: return null
-        val registry = toolRegistry ?: return null
-        val config = agentConfig ?: return null
+        val activeRuntime = runtime ?: return null
 
         return try {
             log.info { "Creating new agent instance for breed research" }
             val agent =
                 AIAgent(
-                    promptExecutor = executor,
+                    promptExecutor = activeRuntime.promptExecutor,
                     strategy = breedResearchStrategy(
                         maxToolCalls = properties.maxToolCalls,
                     ),
-                    toolRegistry = registry,
-                    agentConfig = config,
+                    toolRegistry = activeRuntime.toolRegistry,
+                    agentConfig = activeRuntime.agentConfig,
                 ) {
                     install(Tracing) {
                         addMessageProcessor(TraceFeatureMessageLogWriter(OshaiKotlinLogging.logger {}))
@@ -167,20 +168,9 @@ class KoogBreedResearchAgent(
 
     @PreDestroy
     fun shutdown() {
-        toolsHttpClient?.close()
-        ollamaHttpClient?.close()
+        runtime?.toolsHttpClient?.close()
+        runtime?.ollamaHttpClient?.close()
     }
-
-    private fun authorizedHttpClient(apiKey: String): HttpClient =
-        HttpClient(CIO) {
-            defaultRequest {
-                header(HttpHeaders.Authorization, "Bearer $apiKey")
-                contentType(ContentType.Application.Json)
-            }
-            install(ContentNegotiation) {
-                json(json)
-            }
-        }
 
     companion object {
         private val BREED_RESEARCH_SYSTEM_PROMPT = """
@@ -228,3 +218,12 @@ class KoogBreedResearchAgent(
         """.trimIndent()
     }
 }
+
+private data class AgentRuntime(
+    val ollamaHttpClient: HttpClient,
+    val toolsHttpClient: HttpClient,
+    val toolRegistry: ToolRegistry,
+    val promptExecutor: SingleLLMPromptExecutor,
+    val model: LLModel,
+    val agentConfig: AIAgentConfig,
+)
