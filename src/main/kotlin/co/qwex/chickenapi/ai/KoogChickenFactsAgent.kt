@@ -223,15 +223,6 @@ class KoogChickenFactsAgent(
     }
 }
 
-private data class AgentRuntime(
-    val ollamaHttpClient: HttpClient,
-    val toolsHttpClient: HttpClient,
-    val toolRegistry: ToolRegistry,
-    val promptExecutor: SingleLLMPromptExecutor,
-    val model: LLModel,
-    val agentConfig: AIAgentConfig,
-)
-
 /**
  * Tool for saving a chicken fact with structured output.
  * This is the final tool that should be called to save the research result.
