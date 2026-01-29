@@ -218,12 +218,3 @@ class KoogBreedResearchAgent(
         """.trimIndent()
     }
 }
-
-private data class AgentRuntime(
-    val ollamaHttpClient: HttpClient,
-    val toolsHttpClient: HttpClient,
-    val toolRegistry: ToolRegistry,
-    val promptExecutor: SingleLLMPromptExecutor,
-    val model: LLModel,
-    val agentConfig: AIAgentConfig,
-)
