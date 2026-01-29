@@ -5,13 +5,16 @@ import co.qwex.chickenapi.model.ChickenFactsRecord
 import co.qwex.chickenapi.repository.ChickenFactsRepository
 import com.google.api.services.sheets.v4.Sheets
 import com.google.api.services.sheets.v4.model.ValueRange
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 import mu.KotlinLogging
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Repository
 import java.time.Instant
 
-private const val CHICKEN_FACTS_RANGE = "chicken_facts!A1:J1"
-private const val CHICKEN_FACTS_DATA_RANGE = "chicken_facts!A:J"
+private const val CHICKEN_FACTS_RANGE = "chicken_facts!A1:K1"
+private const val CHICKEN_FACTS_DATA_RANGE = "chicken_facts!A:K"
 
 @Repository
 class ChickenFactsSheetRepository(
@@ -19,6 +22,7 @@ class ChickenFactsSheetRepository(
     @Value("\${google.sheets.db.spreadsheetId}") private val spreadsheetId: String,
 ) : ChickenFactsRepository {
     private val log = KotlinLogging.logger {}
+    private val json = Json { ignoreUnknownKeys = true }
 
     override fun create(entity: ChickenFactsRecord) {
         val updatedAt = Instant.now()
@@ -31,6 +35,7 @@ class ChickenFactsSheetRepository(
             entity.fact?.length ?: 0,
             entity.fact.orEmpty(),
             entity.sourceUrl.orEmpty(),
+            entity.factEmbedding?.let { json.encodeToString(ListSerializer(Double.serializer()), it) }.orEmpty(),
             entity.errorMessage.orEmpty(),
             updatedAt.toString(),
         )
@@ -115,8 +120,13 @@ class ChickenFactsSheetRepository(
 
         val fact = row.stringAt(6, trim = false)
         val sourceUrl = row.stringAt(7, trim = false)
-        val errorMessage = row.stringAt(8, trim = false)
-        val updatedAt = row.instantAt(9)
+        val embedding = row.stringAt(8, trim = false)?.let { raw ->
+            runCatching { json.decodeFromString(ListSerializer(Double.serializer()), raw) }
+                .onFailure { log.debug(it) { "Unable to parse embedding for run $runId" } }
+                .getOrNull()
+        }
+        val errorMessage = row.stringAt(9, trim = false)
+        val updatedAt = row.instantAt(10)
 
         return ChickenFactsRecord(
             runId = runId,
@@ -126,6 +136,7 @@ class ChickenFactsSheetRepository(
             outcome = outcome,
             fact = fact,
             sourceUrl = sourceUrl,
+            factEmbedding = embedding,
             errorMessage = errorMessage,
             updatedAt = updatedAt,
         )

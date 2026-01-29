@@ -1,6 +1,7 @@
 package co.qwex.chickenapi.service
 
 import co.qwex.chickenapi.ai.KoogChickenFactsAgent
+import co.qwex.chickenapi.ai.OllamaEmbeddingService
 import co.qwex.chickenapi.model.AgentRunOutcome
 import co.qwex.chickenapi.model.ChickenFactsRecord
 import co.qwex.chickenapi.repository.ChickenFactsRepository
@@ -30,6 +31,7 @@ data class ChickenFactJson(
 )
 class ChickenFactResearcherScheduledTaskService(
     private val koogChickenFactsAgent: KoogChickenFactsAgent,
+    private val ollamaEmbeddingService: OllamaEmbeddingService,
     private val chickenFactsRepository: ChickenFactsRepository,
 ) {
 
@@ -63,6 +65,7 @@ class ChickenFactResearcherScheduledTaskService(
         // Parse JSON output from agent
         var fact: String? = null
         var sourceUrl: String? = null
+        var factEmbedding: List<Double>? = null
         var outcome = AgentRunOutcome.FAILED
 
         if (response != null && response.isNotBlank()) {
@@ -86,7 +89,21 @@ class ChickenFactResearcherScheduledTaskService(
         val failureDetails = failureReason?.let { " Reason: $it" }.orEmpty()
 
         when (outcome) {
-            AgentRunOutcome.SUCCESS -> log.info { "Koog agent successfully produced fact" }
+            AgentRunOutcome.SUCCESS -> {
+                log.info { "Koog agent successfully produced fact" }
+                if (!fact.isNullOrBlank() && ollamaEmbeddingService.isReady()) {
+                    factEmbedding = runBlocking {
+                        ollamaEmbeddingService.embedFact(fact!!.trim())
+                    }
+                    if (factEmbedding == null) {
+                        log.warn { "Embedding generation failed for chicken fact run $runId" }
+                    }
+                } else if (fact.isNullOrBlank()) {
+                    log.warn { "Skipping embedding generation; chicken fact is blank." }
+                } else {
+                    log.warn { "Skipping embedding generation; embedding service is not ready." }
+                }
+            }
             AgentRunOutcome.NO_OUTPUT -> log.warn { "Koog agent returned no chicken facts." }
             AgentRunOutcome.FAILED -> log.error { "Koog agent failed to produce chicken facts.$failureDetails" }
         }
@@ -99,6 +116,7 @@ class ChickenFactResearcherScheduledTaskService(
             outcome = outcome,
             fact = fact,
             sourceUrl = sourceUrl,
+            factEmbedding = factEmbedding,
             errorMessage = when {
                 outcome != AgentRunOutcome.FAILED -> null
                 !failureReason.isNullOrBlank() -> failureReason
