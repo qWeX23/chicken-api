@@ -13,7 +13,8 @@ data class KoogAgentProperties(
     val baseUrl: String = "https://ollama.com",
     val model: String = "gpt-oss:120b",
     val prompt: String = "Find an interesting, fun, or quirky fact about chickens. Look for trivia, surprising behaviors, historical tidbits, or amusing chicken stories rather than scientific research papers. Cite your sources. Format your response as a markdown. stay on topic about chickens. only return one fact.",
-    val apiKey: String? = null,
+    val clientId: String? = null,
+    val clientSecret: String? = null,
     val webSearchMaxResults: Int = 3,
     val maxAgentIterations: Int = 100,
 )
