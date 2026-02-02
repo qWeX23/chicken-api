@@ -26,7 +26,7 @@ jobs:
           cache: 'gradle'
       - name: Run spotless and build
         env:
-          GRADLE_OPTS: "-Dorg.gradle.java.home=${JAVA_HOME_21_X64}"
+          GRADLE_OPTS: "-Dorg.gradle.java.home=${{ env.JAVA_HOME }}"
         run: ./gradlew spotlessCheck build --no-daemon
       - name: Log in to GHCR
         uses: docker/login-action@v3
