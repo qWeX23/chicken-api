@@ -1,6 +1,5 @@
 package co.qwex.chickenapi.ai
 
-import co.qwex.chickenapi.config.BreedResearchAgentProperties
 import co.qwex.chickenapi.config.KoogAgentProperties
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
@@ -36,7 +35,7 @@ class KoogHttpClientConfiguration {
     @ConditionalOnExpression(
         "\${koog.breed-research-agent.enabled:true} && '\${koog.breed-research-agent.client-id:}' != '' && '\${koog.breed-research-agent.client-secret:}' != ''",
     )
-    fun koogBreedResearchHttpClient(properties: BreedResearchAgentProperties): HttpClient =
+    fun koogBreedResearchHttpClient(properties: KoogAgentProperties): HttpClient =
         createAuthorizedClient(
             clientId = properties.clientId.orEmpty(),
             clientSecret = properties.clientSecret.orEmpty(),
