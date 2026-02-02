@@ -32,7 +32,7 @@ We welcome contributions of all kinds! Here are a few ways you can help:
 ## Prerequisites
 
 - **Java 21** is required for local development. The Gradle build uses a Java toolchain set to version 21 and can auto-download a matching JDK if one is not already installed.
-- **CI uses Temurin 21** via `actions/setup-java` and passes the install path to Gradle with `-Dorg.gradle.java.home=$JAVA_HOME`, ensuring the build uses the same Java version as local development.
+- **CI uses Temurin 21** via `actions/setup-java` and passes the install path to Gradle with `-Dorg.gradle.java.home=$JAVA_HOME_21_X64`, ensuring the build uses the same Java version as local development.
 
 ## Logging
 
