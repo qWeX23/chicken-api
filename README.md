@@ -29,6 +29,11 @@ We welcome contributions of all kinds! Here are a few ways you can help:
 - **Suggest a New Breed or Chicken:** Have a favorite breed that's not in our database? Want to add your own chicken? We'd love to see your suggestions.
 - **Improve Documentation:** See a way to make our documentation clearer? We appreciate all documentation improvements.
 
+## Prerequisites
+
+- **Java 21** is required for local development. The Gradle build uses a Java toolchain set to version 21 and can auto-download a matching JDK if one is not already installed.
+- **CI uses Temurin 21** via `actions/setup-java` and passes the install path to Gradle with `-Dorg.gradle.java.home=$JAVA_HOME`, ensuring the build uses the same Java version as local development.
+
 ## Logging
 
 The application uses [kotlin-logging](https://github.com/MicroUtils/kotlin-logging) with Logback. Log messages include a `requestId` for correlation and are written in plain text locally and JSON in production.
