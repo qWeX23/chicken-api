@@ -12,8 +12,6 @@ data class BreedResearchAgentProperties(
     val enabled: Boolean = true,
     val baseUrl: String = "https://ollama.com",
     val model: String = "gpt-oss:120b",
-    val clientId: String? = null,
-    val clientSecret: String? = null,
     val webSearchMaxResults: Int = 3,
     val maxAgentIterations: Int = 100,
     val maxToolCalls: Int = 8,

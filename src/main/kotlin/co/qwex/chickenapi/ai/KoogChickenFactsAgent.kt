@@ -53,15 +53,14 @@ class KoogChickenFactsAgent(
             return
         }
 
+        val apiKey = properties.apiKey?.takeIf { it.isNotBlank() }
         val clientId = properties.clientId?.takeIf { it.isNotBlank() }
         val clientSecret = properties.clientSecret?.takeIf { it.isNotBlank() }
-        val missingFields =
-            listOfNotNull(
-                if (clientId == null) "koog.agent.client-id" else null,
-                if (clientSecret == null) "koog.agent.client-secret" else null,
-            )
-        if (missingFields.isNotEmpty()) {
-            log.warn { "${missingFields.joinToString()} is not set; Koog agent will be skipped." }
+        val hasCloudflareCredentials = clientId != null && clientSecret != null
+        if (apiKey == null && !hasCloudflareCredentials) {
+            log.warn {
+                "koog.agent.api-key or koog.agent.client-id/client-secret is not set; Koog agent will be skipped."
+            }
             return
         }
 

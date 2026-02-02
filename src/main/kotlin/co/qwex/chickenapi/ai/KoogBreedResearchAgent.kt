@@ -17,6 +17,7 @@ import co.qwex.chickenapi.ai.tools.SaveBreedResearchTool
 import co.qwex.chickenapi.ai.tools.WebFetchTool
 import co.qwex.chickenapi.ai.tools.WebSearchTool
 import co.qwex.chickenapi.config.BreedResearchAgentProperties
+import co.qwex.chickenapi.config.KoogAgentProperties
 import co.qwex.chickenapi.repository.BreedRepository
 import io.github.oshai.kotlinlogging.KotlinLogging as OshaiKotlinLogging
 import io.ktor.client.HttpClient
@@ -35,6 +36,7 @@ import org.springframework.stereotype.Service
 @Service
 class KoogBreedResearchAgent(
     private val properties: BreedResearchAgentProperties,
+    private val agentProperties: KoogAgentProperties,
     private val breedRepository: BreedRepository,
     @Qualifier("koogBreedResearchHttpClient")
     private val httpClientProvider: ObjectProvider<HttpClient>,
@@ -52,15 +54,14 @@ class KoogBreedResearchAgent(
             return
         }
 
-        val clientId = properties.clientId?.takeIf { it.isNotBlank() }
-        val clientSecret = properties.clientSecret?.takeIf { it.isNotBlank() }
-        val missingFields =
-            listOfNotNull(
-                if (clientId == null) "koog.breed-research-agent.client-id" else null,
-                if (clientSecret == null) "koog.breed-research-agent.client-secret" else null,
-            )
-        if (missingFields.isNotEmpty()) {
-            log.warn { "${missingFields.joinToString()} is not set; Breed research agent will be skipped." }
+        val apiKey = agentProperties.apiKey?.takeIf { it.isNotBlank() }
+        val clientId = agentProperties.clientId?.takeIf { it.isNotBlank() }
+        val clientSecret = agentProperties.clientSecret?.takeIf { it.isNotBlank() }
+        val hasCloudflareCredentials = clientId != null && clientSecret != null
+        if (apiKey == null && !hasCloudflareCredentials) {
+            log.warn {
+                "koog.agent.api-key or koog.agent.client-id/client-secret is not set; Breed research agent will be skipped."
+            }
             return
         }
 
