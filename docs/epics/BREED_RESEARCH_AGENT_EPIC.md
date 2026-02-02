@@ -408,7 +408,6 @@ data class BreedResearchAgentProperties(
     val enabled: Boolean = true,
     val baseUrl: String = "https://ollama.com",
     val model: String = "gpt-oss:120b",
-    val apiKey: String? = null,
     val webSearchMaxResults: Int = 3,
     val maxAgentIterations: Int = 100,
     val maxToolCalls: Int = 8,
@@ -422,11 +421,12 @@ data class BreedResearchAgentProperties(
 koog.breed-research-agent.enabled=true
 koog.breed-research-agent.base-url=${koog.agent.base-url}
 koog.breed-research-agent.model=${koog.agent.model}
-koog.breed-research-agent.api-key=${OLLAMA_API_KEY:}
 koog.breed-research-agent.web-search-max-results=3
 koog.breed-research-agent.max-agent-iterations=100
 koog.breed-research-agent.max-tool-calls=8
 ```
+
+> **Note:** The breed research agent reuses the shared Koog credentials (`koog.agent.api-key` or `koog.agent.client-id/client-secret`).
 
 ---
 

@@ -23,10 +23,11 @@ class KoogHttpClientConfiguration {
     @Bean
     @Qualifier("koogChickenFactsHttpClient")
     @ConditionalOnExpression(
-        "\${koog.agent.enabled:true} && '\${koog.agent.client-id:}' != '' && '\${koog.agent.client-secret:}' != ''",
+        "\${koog.agent.enabled:true} && (('\${koog.agent.client-id:}' != '' && '\${koog.agent.client-secret:}' != '') || '\${koog.agent.api-key:}' != '')",
     )
     fun koogChickenFactsHttpClient(properties: KoogAgentProperties): HttpClient =
         createAuthorizedClient(
+            apiKey = properties.apiKey.orEmpty(),
             clientId = properties.clientId.orEmpty(),
             clientSecret = properties.clientSecret.orEmpty(),
         )
@@ -34,19 +35,30 @@ class KoogHttpClientConfiguration {
     @Bean
     @Qualifier("koogBreedResearchHttpClient")
     @ConditionalOnExpression(
-        "\${koog.breed-research-agent.enabled:true} && '\${koog.breed-research-agent.client-id:}' != '' && '\${koog.breed-research-agent.client-secret:}' != ''",
+        "\${koog.breed-research-agent.enabled:true} && (('\${koog.agent.client-id:}' != '' && '\${koog.agent.client-secret:}' != '') || '\${koog.agent.api-key:}' != '')",
     )
-    fun koogBreedResearchHttpClient(properties: BreedResearchAgentProperties): HttpClient =
+    fun koogBreedResearchHttpClient(
+        breedResearchProperties: BreedResearchAgentProperties,
+        agentProperties: KoogAgentProperties,
+    ): HttpClient =
         createAuthorizedClient(
-            clientId = properties.clientId.orEmpty(),
-            clientSecret = properties.clientSecret.orEmpty(),
+            apiKey = agentProperties.apiKey.orEmpty(),
+            clientId = agentProperties.clientId.orEmpty(),
+            clientSecret = agentProperties.clientSecret.orEmpty(),
         )
 
-    private fun createAuthorizedClient(clientId: String, clientSecret: String): HttpClient =
+    private fun createAuthorizedClient(apiKey: String, clientId: String, clientSecret: String): HttpClient =
         HttpClient(CIO) {
             defaultRequest {
-                header("CF-Access-Client-Id", clientId)
-                header("CF-Access-Client-Secret", clientSecret)
+                if (apiKey.isNotBlank()) {
+                    header("Authorization", "Bearer $apiKey")
+                }
+                if (clientId.isNotBlank()) {
+                    header("CF-Access-Client-Id", clientId)
+                }
+                if (clientSecret.isNotBlank()) {
+                    header("CF-Access-Client-Secret", clientSecret)
+                }
                 contentType(ContentType.Application.Json)
             }
             install(ContentNegotiation) {
