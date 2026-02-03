@@ -58,8 +58,27 @@ class KoogChickenFactsAgent(
         val clientSecret = properties.clientSecret?.takeIf { it.isNotBlank() }
         val hasCloudflareCredentials = clientId != null && clientSecret != null
         if (apiKey == null && !hasCloudflareCredentials) {
+            val missingFields = buildList {
+                add("koog.agent.api-key")
+                if (clientId == null) {
+                    add("koog.agent.client-id")
+                }
+                if (clientSecret == null) {
+                    add("koog.agent.client-secret")
+                }
+            }
+            val missingEnvVars = buildList {
+                add("OLLAMA_API_KEY")
+                if (clientId == null) {
+                    add("OLLAMA_CLIENT_ID")
+                }
+                if (clientSecret == null) {
+                    add("OLLAMA_CLIENT_SECRET")
+                }
+            }
             log.warn {
-                "koog.agent.api-key or koog.agent.client-id/client-secret is not set; Koog agent will be skipped."
+                "Missing Koog agent credentials: ${missingFields.joinToString()} " +
+                    "(set env vars: ${missingEnvVars.joinToString()}); Koog agent will be skipped."
             }
             return
         }
