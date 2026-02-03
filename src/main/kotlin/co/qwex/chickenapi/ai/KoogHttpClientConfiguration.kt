@@ -1,6 +1,5 @@
 package co.qwex.chickenapi.ai
 
-import co.qwex.chickenapi.config.BreedResearchAgentProperties
 import co.qwex.chickenapi.config.KoogAgentProperties
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
@@ -38,7 +37,6 @@ class KoogHttpClientConfiguration {
         "\${koog.breed-research-agent.enabled:true} && (('\${koog.agent.client-id:}' != '' && '\${koog.agent.client-secret:}' != '') || '\${koog.agent.api-key:}' != '')",
     )
     fun koogBreedResearchHttpClient(
-        breedResearchProperties: BreedResearchAgentProperties,
         agentProperties: KoogAgentProperties,
     ): HttpClient =
         createAuthorizedClient(
