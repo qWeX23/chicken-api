@@ -51,7 +51,7 @@ class BreedResearcherScheduledTaskService(
     private val log = KotlinLogging.logger {}
     private val json = Json { ignoreUnknownKeys = true }
 
-    @Scheduled(cron = "\${koog.breed-research-agent.scheduler.cron:0 0 0 * * *}") // Default: Midnight daily
+    @Scheduled(cron = "\${koog.breed-research-agent.scheduler.cron:0 0 */5 * * *}") // Default: every 5 hours
     fun runDailyBreedResearchTask() {
         log.info { "Breed Research scheduled task started at: ${LocalDateTime.now()}" }
         if (!koogBreedResearchAgent.isReady()) {
