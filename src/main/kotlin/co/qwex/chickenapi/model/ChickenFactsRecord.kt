@@ -10,6 +10,7 @@ data class ChickenFactsRecord(
     val outcome: AgentRunOutcome,
     val fact: String?,
     val sourceUrl: String?,
+    val factEmbedding: List<Double>? = null,
     val errorMessage: String? = null,
     val updatedAt: Instant? = null,
 )

@@ -32,6 +32,7 @@ class ChickenFactsSheetRepositoryTests {
             outcome = AgentRunOutcome.SUCCESS,
             fact = "Chickens can recognize over 100 faces",
             sourceUrl = "https://example.com/chicken-facts",
+            factEmbedding = listOf(0.1, 0.2, 0.3),
             errorMessage = null,
         )
 
@@ -40,7 +41,7 @@ class ChickenFactsSheetRepositoryTests {
         val valueRangeCaptor = ArgumentCaptor.forClass(ValueRange::class.java)
         Mockito.verify(values).append(
             Mockito.eq("test-sheet"),
-            Mockito.eq("chicken_facts!A1:J1"),
+            Mockito.eq("chicken_facts!A1:K1"),
             valueRangeCaptor.capture(),
         )
         Mockito.verify(append).setValueInputOption("USER_ENTERED")
@@ -49,5 +50,6 @@ class ChickenFactsSheetRepositoryTests {
         val row = valueRangeCaptor.value.getValues().first()
         assert(row.contains("Chickens can recognize over 100 faces"))
         assert(row.contains("https://example.com/chicken-facts"))
+        assert(row.any { it.toString().contains("[0.1,0.2,0.3]") })
     }
 }

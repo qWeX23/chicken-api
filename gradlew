@@ -102,6 +102,83 @@ die () {
     exit 1
 } >&2
 
+# Work around Gradle/Kotlin DSL incompatibilities with newer JDKs by
+# bootstrapping a Java 21 runtime when running on Java 25+.
+GRADLE_USER_HOME=${GRADLE_USER_HOME:-"$HOME/.gradle"}
+
+resolve_java_major_version() {
+    version_string=$1
+    major=${version_string%%.*}
+    if [ "$major" = "1" ]; then
+        major=${version_string#*.}
+        major=${major%%.*}
+    fi
+    printf '%s' "$major"
+}
+
+ensure_java_21() {
+    if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+        java_cmd="$JAVA_HOME/bin/java"
+    else
+        java_cmd=$( command -v java 2>/dev/null )
+    fi
+
+    if [ -z "${java_cmd:-}" ]; then
+        return 0
+    fi
+
+    java_version=$("$java_cmd" -version 2>&1 | awk -F\" '/version/ {print $2}')
+    if [ -z "${java_version:-}" ]; then
+        return 0
+    fi
+
+    java_major=$(resolve_java_major_version "$java_version")
+    case "$java_major" in
+        ''|*[!0-9]*)
+            return 0
+            ;;
+    esac
+
+    if [ "$java_major" -lt 25 ]; then
+        return 0
+    fi
+
+    if [ "$( uname )" != "Linux" ]; then
+        warn "Gradle requires Java 21+ but Java $java_version is unsupported and auto-install only works on Linux."
+        return 0
+    fi
+
+    jdk_dir="$GRADLE_USER_HOME/jdks/temurin-21"
+    if [ ! -x "$jdk_dir/bin/java" ]; then
+        mkdir -p "$jdk_dir" || return 0
+        archive="$jdk_dir/temurin-21.tar.gz"
+        url="https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.10%2B7/OpenJDK21U-jdk_x64_linux_hotspot_21.0.10_7.tar.gz"
+        if command -v curl >/dev/null 2>&1; then
+            curl -fsSL "$url" -o "$archive" || die "Failed to download Java 21 from $url"
+        elif command -v wget >/dev/null 2>&1; then
+            wget -qO "$archive" "$url" || die "Failed to download Java 21 from $url"
+        else
+            warn "Cannot download Java 21 automatically because curl/wget is unavailable."
+            return 0
+        fi
+        tar -xzf "$archive" -C "$jdk_dir" --strip-components=1 || die "Failed to extract Java 21 archive"
+        rm -f "$archive"
+    fi
+
+    if [ -n "${CODEX_PROXY_CERT:-}" ] && [ -f "$CODEX_PROXY_CERT" ]; then
+        "$jdk_dir/bin/keytool" -importcert -noprompt \
+            -alias codex-proxy \
+            -keystore "$jdk_dir/lib/security/cacerts" \
+            -storepass changeit \
+            -file "$CODEX_PROXY_CERT" >/dev/null 2>&1 || true
+    fi
+
+    JAVA_HOME=$jdk_dir
+    export JAVA_HOME
+}
+
+ensure_java_21
+
 # OS specific support (must be 'true' or 'false').
 cygwin=false
 msys=false
@@ -203,6 +280,42 @@ fi
 
 # Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
 DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
+
+# Configure JVM proxy settings from environment variables when present.
+proxy_url=${https_proxy:-${HTTPS_PROXY:-}}
+if [ -n "$proxy_url" ]; then
+    proxy_hostport=${proxy_url#*://}
+    proxy_hostport=${proxy_hostport%%/*}
+    proxy_host=${proxy_hostport%%:*}
+    proxy_port=${proxy_hostport##*:}
+    if [ "$proxy_host" != "$proxy_port" ]; then
+        DEFAULT_JVM_OPTS="$DEFAULT_JVM_OPTS -Dhttps.proxyHost=$proxy_host -Dhttps.proxyPort=$proxy_port"
+        PROXY_JVM_OPTS="$PROXY_JVM_OPTS -Dhttps.proxyHost=$proxy_host -Dhttps.proxyPort=$proxy_port"
+    fi
+fi
+
+proxy_url=${http_proxy:-${HTTP_PROXY:-}}
+if [ -n "$proxy_url" ]; then
+    proxy_hostport=${proxy_url#*://}
+    proxy_hostport=${proxy_hostport%%/*}
+    proxy_host=${proxy_hostport%%:*}
+    proxy_port=${proxy_hostport##*:}
+    if [ "$proxy_host" != "$proxy_port" ]; then
+        DEFAULT_JVM_OPTS="$DEFAULT_JVM_OPTS -Dhttp.proxyHost=$proxy_host -Dhttp.proxyPort=$proxy_port"
+        PROXY_JVM_OPTS="$PROXY_JVM_OPTS -Dhttp.proxyHost=$proxy_host -Dhttp.proxyPort=$proxy_port"
+    fi
+fi
+
+if [ -n "${no_proxy:-${NO_PROXY:-}}" ]; then
+    non_proxy_hosts=$(printf '%s' "${no_proxy:-${NO_PROXY:-}}" | tr ',' '|' )
+    DEFAULT_JVM_OPTS="$DEFAULT_JVM_OPTS -Dhttp.nonProxyHosts=$non_proxy_hosts -Dhttps.nonProxyHosts=$non_proxy_hosts"
+    PROXY_JVM_OPTS="$PROXY_JVM_OPTS -Dhttp.nonProxyHosts=$non_proxy_hosts -Dhttps.nonProxyHosts=$non_proxy_hosts"
+fi
+
+if [ -n "${PROXY_JVM_OPTS:-}" ]; then
+    JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} $PROXY_JVM_OPTS"
+    export JAVA_TOOL_OPTIONS
+fi
 
 # Collect all arguments for the java command:
 #   * DEFAULT_JVM_OPTS, JAVA_OPTS, and optsEnvironmentVar are not allowed to contain shell fragments,
