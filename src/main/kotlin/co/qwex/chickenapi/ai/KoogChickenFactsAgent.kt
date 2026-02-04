@@ -68,11 +68,14 @@ class KoogChickenFactsAgent(
                 }
             }
             val missingEnvVars = buildList {
+                add("KOOG_AGENT_API_KEY")
                 add("OLLAMA_API_KEY")
                 if (clientId == null) {
+                    add("KOOG_AGENT_CLIENT_ID")
                     add("OLLAMA_CLIENT_ID")
                 }
                 if (clientSecret == null) {
+                    add("KOOG_AGENT_CLIENT_SECRET")
                     add("OLLAMA_CLIENT_SECRET")
                 }
             }
