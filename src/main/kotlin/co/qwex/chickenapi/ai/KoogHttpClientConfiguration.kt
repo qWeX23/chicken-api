@@ -27,8 +27,10 @@ class KoogHttpClientConfiguration {
     fun koogChickenFactsHttpClient(properties: KoogAgentProperties): HttpClient =
         createAuthorizedClient(
             apiKey = properties.apiKey.orEmpty(),
+            accessToken = properties.accessToken.orEmpty(),
             clientId = properties.clientId.orEmpty(),
             clientSecret = properties.clientSecret.orEmpty(),
+            extraHeaders = properties.extraHeaders,
         )
 
     @Bean
@@ -41,15 +43,32 @@ class KoogHttpClientConfiguration {
     ): HttpClient =
         createAuthorizedClient(
             apiKey = agentProperties.apiKey.orEmpty(),
+            accessToken = agentProperties.accessToken.orEmpty(),
             clientId = agentProperties.clientId.orEmpty(),
             clientSecret = agentProperties.clientSecret.orEmpty(),
+            extraHeaders = agentProperties.extraHeaders,
         )
 
-    private fun createAuthorizedClient(apiKey: String, clientId: String, clientSecret: String): HttpClient =
+    private fun createAuthorizedClient(
+        apiKey: String,
+        accessToken: String,
+        clientId: String,
+        clientSecret: String,
+        extraHeaders: Map<String, String>,
+    ): HttpClient =
         HttpClient(CIO) {
             defaultRequest {
-                if (apiKey.isNotBlank()) {
-                    header("Authorization", "Bearer $apiKey")
+                val authorizationValue =
+                    accessToken.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
+                        ?: apiKey.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
+                val normalizedExtraHeaders = extraHeaders.filter { (key, value) ->
+                    key.isNotBlank() && value.isNotBlank()
+                }
+                val hasAuthorizationHeader = normalizedExtraHeaders.keys.any { key ->
+                    key.equals("Authorization", ignoreCase = true)
+                }
+                if (authorizationValue != null && !hasAuthorizationHeader) {
+                    header("Authorization", authorizationValue)
                 }
                 if (clientId.isNotBlank()) {
                     header("CF-Access-Client-Id", clientId)
@@ -57,6 +76,9 @@ class KoogHttpClientConfiguration {
                 if (clientSecret.isNotBlank()) {
                     header("CF-Access-Client-Secret", clientSecret)
                 }
+                normalizedExtraHeaders
+                    .filterNot { (key) -> key.equals("Authorization", ignoreCase = true) && authorizationValue != null }
+                    .forEach { (key, value) -> header(key, value) }
                 contentType(ContentType.Application.Json)
             }
             install(ContentNegotiation) {
