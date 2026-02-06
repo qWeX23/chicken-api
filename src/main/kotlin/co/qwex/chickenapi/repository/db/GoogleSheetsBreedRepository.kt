@@ -5,12 +5,14 @@ import co.qwex.chickenapi.repository.BreedRepository
 import co.qwex.chickenapi.repository.sheets.BreedsTable
 import co.qwex.chickenapi.repository.sheets.SheetsGateway
 import co.qwex.chickenapi.repository.sheets.ValueInputOption
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import mu.KotlinLogging
 import org.springframework.stereotype.Repository
 import java.time.Instant
 
-private const val SOURCES_DELIMITER = "|"
 private val log = KotlinLogging.logger {}
+private val json = Json { ignoreUnknownKeys = true }
 
 @Repository
 class GoogleSheetsBreedRepository(
@@ -49,7 +51,10 @@ class GoogleSheetsBreedRepository(
             entity.imageUrl.orEmpty(),
             entity.numEggs ?: "",
             updatedAt.toString(),
-            entity.sources?.joinToString(SOURCES_DELIMITER).orEmpty(),
+            entity.sources
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { sources -> json.encodeToString(sources) }
+                .orEmpty(),
         )
         sheetsGateway.updateValues(table.rowRange(rowNumber), listOf(row), ValueInputOption.USER_ENTERED)
 

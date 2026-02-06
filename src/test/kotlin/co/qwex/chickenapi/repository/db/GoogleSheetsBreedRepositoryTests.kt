@@ -67,6 +67,6 @@ class GoogleSheetsBreedRepositoryTests {
         assertEquals(1, row[0])
         assertEquals("Silkie", row[1])
         assertNotNull(runCatching { Instant.parse(row[9].toString()) }.getOrNull())
-        assertEquals("https://example.com", row[10])
+        assertEquals("[\"https://example.com\"]", row[10])
     }
 }

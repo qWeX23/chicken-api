@@ -36,6 +36,28 @@ class BreedRowMapperTests {
     }
 
     @Test
+    fun `maps row with sources stored as JSON array`() {
+        val row = listOf(
+            7,
+            "Swedish Flower Hen",
+            "Sweden",
+            "Tinted",
+            "Medium",
+            "Alert",
+            "Landrace breed",
+            "",
+            180,
+            "2026-02-06T00:00:00Z",
+            "[\"https://svf.example/a\", \"https://svf.example/b\"]",
+        )
+
+        val breed = mapper.map(row)
+
+        requireNotNull(breed)
+        assertEquals(listOf("https://svf.example/a", "https://svf.example/b"), breed.sources)
+    }
+
+    @Test
     fun `returns null for header row`() {
         val row = BreedsTable.headerRow()
 

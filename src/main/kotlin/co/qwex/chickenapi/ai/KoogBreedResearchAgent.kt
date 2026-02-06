@@ -42,6 +42,8 @@ class KoogBreedResearchAgent(
     private val log = KotlinLogging.logger {}
     private val sanitizedBaseUrl =
         properties.baseUrl.trim().removeSuffix("/").removeSuffix("/api")
+    private val sanitizedWebToolsBaseUrl =
+        properties.webToolsBaseUrl.trim().removeSuffix("/").removeSuffix("/api")
 
     private var runtime: AgentRuntime? = null
 
@@ -80,7 +82,7 @@ class KoogBreedResearchAgent(
         val webSearchTool =
             WebSearchTool(
                 httpClient = webToolClient,
-                baseUrl = sanitizedBaseUrl,
+                baseUrl = sanitizedWebToolsBaseUrl,
                 defaultMaxResults = properties.webSearchMaxResults,
                 promptExecutor = promptExecutor,
                 model = model,
@@ -89,7 +91,7 @@ class KoogBreedResearchAgent(
         val webFetchTool =
             WebFetchTool(
                 httpClient = webToolClient,
-                baseUrl = sanitizedBaseUrl,
+                baseUrl = sanitizedWebToolsBaseUrl,
                 promptExecutor = promptExecutor,
                 model = model,
                 summarizationFocus = "breed-specific characteristics, history, temperament, egg production, and unique traits",
@@ -116,7 +118,7 @@ class KoogBreedResearchAgent(
 
         runtime = AgentRuntime(llmHttpClient, webToolClient, toolRegistry, promptExecutor, model, agentConfig)
         log.info {
-            "Koog breed research agent initialized with model ${properties.model} using base ${properties.baseUrl}"
+            "Koog breed research agent initialized with model ${properties.model}; llm base ${properties.baseUrl}; web tools base ${properties.webToolsBaseUrl}"
         }
     }
 
