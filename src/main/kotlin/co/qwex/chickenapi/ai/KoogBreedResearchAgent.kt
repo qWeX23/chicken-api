@@ -17,7 +17,6 @@ import co.qwex.chickenapi.ai.tools.SaveBreedResearchTool
 import co.qwex.chickenapi.ai.tools.WebFetchTool
 import co.qwex.chickenapi.ai.tools.WebSearchTool
 import co.qwex.chickenapi.config.BreedResearchAgentProperties
-import co.qwex.chickenapi.config.KoogAgentProperties
 import co.qwex.chickenapi.repository.BreedRepository
 import io.github.oshai.kotlinlogging.KotlinLogging as OshaiKotlinLogging
 import io.ktor.client.HttpClient
@@ -36,7 +35,6 @@ import org.springframework.stereotype.Service
 @Service
 class KoogBreedResearchAgent(
     private val properties: BreedResearchAgentProperties,
-    private val agentProperties: KoogAgentProperties,
     private val breedRepository: BreedRepository,
     @Qualifier("koogBreedResearchHttpClient")
     private val httpClientProvider: ObjectProvider<HttpClient>,
@@ -51,15 +49,6 @@ class KoogBreedResearchAgent(
     fun initialize() {
         if (!properties.enabled) {
             log.info { "Koog breed research agent disabled via configuration." }
-            return
-        }
-
-        val credentialCheck = KoogCredentialValidator.validate(agentProperties)
-        if (!credentialCheck.hasCredentials) {
-            log.warn {
-                "Missing Koog agent credentials: ${credentialCheck.missingFields.joinToString()} " +
-                    "(set env vars: ${credentialCheck.missingEnvVars.joinToString()}); Breed research agent will be skipped."
-            }
             return
         }
 
