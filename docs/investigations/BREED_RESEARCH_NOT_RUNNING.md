@@ -56,34 +56,28 @@ val returnResult by node<String, String>("return_result") { message ->
 
 ---
 
-### 2. Missing `OLLAMA_API_KEY` or Client Credentials (Secondary - If Agent Not Ready)
+### 2. Missing `OLLAMA_API_KEY` (Secondary - If Agent Not Ready)
 
 **Evidence**:
 - `application.properties:31`: `koog.agent.api-key=${OLLAMA_API_KEY:}`
-- `application.properties:32`: `koog.agent.client-id=${OLLAMA_CLIENT_ID:}`
-- `application.properties:33`: `koog.agent.client-secret=${OLLAMA_CLIENT_SECRET:}`
 - The syntax `${VAR:}` means: use the environment variable, or default to empty string
 - Empty string fails the `isNotBlank()` check
 
 **Code Path**:
 ```
-KoogBreedResearchAgent.kt:55-63:
-  val apiKey = agentProperties.apiKey?.takeIf { it.isNotBlank() }
-  val hasCloudflareCredentials = clientId != null && clientSecret != null
-  if (apiKey == null && !hasCloudflareCredentials) {
-      log.warn { "koog.agent.api-key or koog.agent.client-id/client-secret is not set; Breed research agent will be skipped." }
+RequireKoogCredentialsValidator.kt:
+  if (value.enabled && value.apiKey.isNullOrBlank()) {
+      // configuration validation fails
   }
 ```
 
 When API key is missing:
-1. `promptExecutor` is never initialized (remains `null`)
-2. `isReady()` returns `false` (line 135: `fun isReady(): Boolean = promptExecutor != null`)
-3. Scheduled task checks `isReady()` and exits early (lines 57-60)
+1. Configuration binding fails validation for `koog.agent.api-key`
+2. The application fails fast during startup
 
 **Expected Log Output**:
 ```
-WARN  - koog.agent.api-key or koog.agent.client-id/client-secret is not set; Breed research agent will be skipped.
-INFO  - Breed research agent is not ready, skipping run.
+ERROR - Failed to bind properties under 'koog.agent' ...
 ```
 
 ### 2. Feature Recently Deployed
@@ -113,9 +107,7 @@ The scheduler runs only at midnight UTC daily (`0 0 0 * * *`). There is currentl
 
 | Variable | Purpose | Required |
 |----------|---------|----------|
-| `OLLAMA_API_KEY` | API key for LLM authentication (optional if using client credentials) | **Yes** |
-| `OLLAMA_CLIENT_ID` | Cloudflare Access client ID | Optional |
-| `OLLAMA_CLIENT_SECRET` | Cloudflare Access client secret | Optional |
+| `OLLAMA_API_KEY` | API key for LLM authentication | **Yes** |
 
 ### Application Properties (with defaults)
 
@@ -161,7 +153,7 @@ The scheduler runs only at midnight UTC daily (`0 0 0 * * *`). There is currentl
 
 ### Secondary Actions (If Agent Not Ready)
 
-1. **Verify `OLLAMA_API_KEY` or Cloudflare Access credentials** are set in the deployment environment
+1. **Verify `OLLAMA_API_KEY`** is set in the deployment environment
 2. **Verify LLM connectivity** - ensure the Ollama-compatible endpoint is reachable
 
 ### Future Improvements

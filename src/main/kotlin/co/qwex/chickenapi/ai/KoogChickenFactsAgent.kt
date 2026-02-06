@@ -53,15 +53,6 @@ class KoogChickenFactsAgent(
             return
         }
 
-        val credentialCheck = KoogCredentialValidator.validate(properties)
-        if (!credentialCheck.hasCredentials) {
-            log.warn {
-                "Missing Koog agent credentials: ${credentialCheck.missingFields.joinToString()} " +
-                    "(set env vars: ${credentialCheck.missingEnvVars.joinToString()}); Koog agent will be skipped."
-            }
-            return
-        }
-
         val llmHttpClient = httpClientProvider.getIfAvailable() ?: return
         val webToolClient = llmHttpClient
         val promptExecutor =

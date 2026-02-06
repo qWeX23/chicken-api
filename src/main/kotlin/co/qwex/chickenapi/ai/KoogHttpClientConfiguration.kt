@@ -22,45 +22,35 @@ class KoogHttpClientConfiguration {
     @Bean
     @Qualifier("koogChickenFactsHttpClient")
     @ConditionalOnExpression(
-        "\${koog.agent.enabled:true} && (('\${koog.agent.client-id:}' != '' && '\${koog.agent.client-secret:}' != '') || '\${koog.agent.api-key:}' != '')",
+        "\${koog.agent.enabled:true} && '\${koog.agent.api-key:}' != ''",
     )
     fun koogChickenFactsHttpClient(properties: KoogAgentProperties): HttpClient =
         createAuthorizedClient(
             apiKey = properties.apiKey.orEmpty(),
-            accessToken = properties.accessToken.orEmpty(),
-            clientId = properties.clientId.orEmpty(),
-            clientSecret = properties.clientSecret.orEmpty(),
             extraHeaders = properties.extraHeaders,
         )
 
     @Bean
     @Qualifier("koogBreedResearchHttpClient")
     @ConditionalOnExpression(
-        "\${koog.breed-research-agent.enabled:true} && (('\${koog.agent.client-id:}' != '' && '\${koog.agent.client-secret:}' != '') || '\${koog.agent.api-key:}' != '')",
+        "\${koog.breed-research-agent.enabled:true} && '\${koog.agent.api-key:}' != ''",
     )
     fun koogBreedResearchHttpClient(
         agentProperties: KoogAgentProperties,
     ): HttpClient =
         createAuthorizedClient(
             apiKey = agentProperties.apiKey.orEmpty(),
-            accessToken = agentProperties.accessToken.orEmpty(),
-            clientId = agentProperties.clientId.orEmpty(),
-            clientSecret = agentProperties.clientSecret.orEmpty(),
             extraHeaders = agentProperties.extraHeaders,
         )
 
     private fun createAuthorizedClient(
         apiKey: String,
-        accessToken: String,
-        clientId: String,
-        clientSecret: String,
         extraHeaders: Map<String, String>,
     ): HttpClient =
         HttpClient(CIO) {
             defaultRequest {
                 val authorizationValue =
-                    accessToken.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
-                        ?: apiKey.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
+                    apiKey.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
                 val normalizedExtraHeaders = extraHeaders.filter { (key, value) ->
                     key.isNotBlank() && value.isNotBlank()
                 }
@@ -69,12 +59,6 @@ class KoogHttpClientConfiguration {
                 }
                 if (authorizationValue != null && !hasAuthorizationHeader) {
                     header("Authorization", authorizationValue)
-                }
-                if (clientId.isNotBlank()) {
-                    header("CF-Access-Client-Id", clientId)
-                }
-                if (clientSecret.isNotBlank()) {
-                    header("CF-Access-Client-Secret", clientSecret)
                 }
                 normalizedExtraHeaders
                     .filterNot { (key) -> key.equals("Authorization", ignoreCase = true) && authorizationValue != null }
