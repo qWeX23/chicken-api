@@ -44,6 +44,20 @@ Adjust log levels in `application.properties` or via the `logging.level` system 
 logging.level.co.qwex=DEBUG
 ```
 
+## Koog Agent Configuration
+
+The Koog agents (chicken facts and breed research) share the same authentication settings. Configure them in `application.properties` (or environment variables) using the `koog.agent.*` keys. You can also supply additional headers for upstream LLM gateways (for example, Cloudflare Access or vendor-specific routing) via `koog.agent.extra-headers.*`.
+
+Example configuration:
+
+```properties
+koog.agent.api-key=${KOOG_AGENT_API_KEY:}
+koog.agent.client-id=${KOOG_AGENT_CLIENT_ID:}
+koog.agent.client-secret=${KOOG_AGENT_CLIENT_SECRET:}
+koog.agent.extra-headers.CF-Access-Jwt-Assertion=${KOOG_AGENT_ACCESS_JWT_ASSERTION:}
+koog.agent.extra-headers.X-Request-Source=chicken-api
+```
+
 ## Using the API
 
 The Chicken API is free and easy to use. Check out our [API Documentation](https://chickenapi.com/swagger-ui/index.html) to get started. We're excited to see what you build!
