@@ -426,7 +426,7 @@ koog.breed-research-agent.max-agent-iterations=100
 koog.breed-research-agent.max-tool-calls=8
 ```
 
-> **Note:** The breed research agent reuses the shared Koog credentials (`koog.agent.api-key` or `koog.agent.client-id/client-secret`).
+> **Note:** The breed research agent reuses the shared Koog credentials (`koog.agent.api-key` or `koog.agent.access-token`).
 
 ---
 
