@@ -5,10 +5,15 @@ import com.google.api.client.json.jackson2.JacksonFactory
 import com.google.api.services.sheets.v4.Sheets
 import com.google.auth.http.HttpCredentialsAdapter
 import com.google.auth.oauth2.GoogleCredentials
+import co.qwex.chickenapi.repository.sheets.GoogleSheetsClient
+import co.qwex.chickenapi.repository.sheets.GoogleSheetsGateway
+import co.qwex.chickenapi.repository.sheets.SheetsClient
+import co.qwex.chickenapi.repository.sheets.SheetsGateway
 import mu.KotlinLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.beans.factory.annotation.Value
 
 private val log = KotlinLogging.logger {}
 
@@ -36,4 +41,13 @@ class GoogleSheetsConfig {
             .setApplicationName(APPLICATION_NAME)
             .build()
     }
+
+    @Bean
+    fun sheetsClient(sheets: Sheets): SheetsClient = GoogleSheetsClient(sheets)
+
+    @Bean
+    fun sheetsGateway(
+        sheetsClient: SheetsClient,
+        @Value("\${google.sheets.db.spreadsheetId}") spreadsheetId: String,
+    ): SheetsGateway = GoogleSheetsGateway(sheetsClient, spreadsheetId)
 }

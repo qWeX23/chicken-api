@@ -87,6 +87,8 @@ This plan is intentionally broken into small, safe, incremental tasks to reduce 
    - Escape embedded single quotes by doubling them (e.g., `Bob's` → `'Bob''s'`).
 4. Add unit tests for `SheetRange` to verify A1 formatting, quoting, and special characters (no gateway usage yet).
 
+**Status:** ✅ Completed (core types added with quoting + SheetRange tests).
+
 **Validation:** `./gradlew test` (Java 21).
 
 ---
@@ -112,6 +114,8 @@ This plan is intentionally broken into small, safe, incremental tasks to reduce 
      - After creation, write headers using `updateValues(table.headerRange(), listOf(table.headerRow()))`.
 4. Wire `GoogleSheetsGateway` as a Spring bean.
 
+**Status:** ✅ Completed (gateway, adapter, and Spring wiring added with ensure-table-exists behavior).
+
 **Validation:** Unit tests using the adapter to verify `ensureTableExists` behavior.
 
 ---
@@ -134,6 +138,8 @@ This plan is intentionally broken into small, safe, incremental tasks to reduce 
 
 **Validation:** Unit tests for `BreedRowMapper` using sample rows.
 
+**Status:** ✅ Completed (breeds table + row mapper with parsing helpers + tests).
+
 ---
 
 ### Task 4 — Refactor `GoogleSheetBreedRepository` to gateway + table
@@ -149,6 +155,8 @@ This plan is intentionally broken into small, safe, incremental tasks to reduce 
 
 **Validation:** Update existing repository tests to use `SheetsGateway` or provide a fake.
 
+**Status:** ✅ Completed (repository migrated to SheetsGateway with FakeSheetsGateway tests).
+
 ---
 
 ### Task 5 — Provide a test-friendly gateway
@@ -161,6 +169,8 @@ This plan is intentionally broken into small, safe, incremental tasks to reduce 
 3. Update `GoogleSheetsBreedRepository` tests to use the fake.
 
 **Validation:** `./gradlew test` (Java 21).
+
+**Status:** ✅ Completed (FakeSheetsGateway and focused gateway tests added).
 
 ---
 
@@ -204,13 +214,13 @@ This plan is intentionally broken into small, safe, incremental tasks to reduce 
 ---
 
 ## Deliverables checklist (Phase 1)
-- [ ] `SheetRange`, `RowMapper`, and `SheetTable` types added.
-- [ ] `SheetsGateway` + `GoogleSheetsGateway` implemented.
-- [ ] `ensureTableExists` with `AddSheetRequest` and header insertion via `updateValues`.
-- [ ] `BreedsTable` + `BreedRowMapper` implemented.
-- [ ] `GoogleSheetsBreedRepository` migrated.
-- [ ] Tests updated to use `FakeSheetsGateway`.
-- [ ] All tests passing on Java 21.
+- [x] `SheetRange`, `RowMapper`, and `SheetTable` types added.
+- [x] `SheetsGateway` + `GoogleSheetsGateway` implemented.
+- [x] `ensureTableExists` with `AddSheetRequest` and header insertion via `updateValues`.
+- [x] `BreedsTable` + `BreedRowMapper` implemented.
+- [x] `GoogleSheetsBreedRepository` migrated.
+- [x] Tests updated to use `FakeSheetsGateway`.
+- [x] All tests passing on Java 21.
 
 ---
 
