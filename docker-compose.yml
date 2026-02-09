@@ -1,0 +1,32 @@
+services:
+  chicken-api:
+    container_name: chicken-api
+    image: chicken-api:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${CHICKEN_API_PORT:-8080}:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-credentials.json
+      KOOG_AGENT_BASE_URL: ${KOOG_AGENT_BASE_URL:-http://ollama:11434}
+      KOOG_AGENT_API_KEY: ${KOOG_AGENT_API_KEY:?Set KOOG_AGENT_API_KEY}
+    volumes:
+      - ${GOOGLE_APPLICATION_CREDENTIALS_FILE:?Set GOOGLE_APPLICATION_CREDENTIALS_FILE}:/run/secrets/google-credentials.json:ro
+    networks:
+      - shared
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    stop_grace_period: 30s
+
+networks:
+  shared:
+    external: true
+    name: shared
