@@ -14,6 +14,7 @@ import org.springframework.validation.annotation.Validated
 data class KoogAgentProperties(
     val enabled: Boolean = true,
     val baseUrl: String = "https://ollama.com",
+    val webToolsBaseUrl: String = baseUrl,
     val model: String = "gpt-oss:120b",
     val embeddingModel: String = "nomic-embed-text",
     val prompt: String = "Find an interesting, fun, or quirky fact about chickens. Look for trivia, surprising behaviors, historical tidbits, or amusing chicken stories rather than scientific research papers. Cite your sources. Format your response as a markdown. stay on topic about chickens. only return one fact.",

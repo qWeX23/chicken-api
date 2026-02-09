@@ -51,7 +51,7 @@ class BreedResearcherScheduledTaskService(
     private val log = KotlinLogging.logger {}
     private val json = Json { ignoreUnknownKeys = true }
 
-    @Scheduled(cron = "\${koog.breed-research-agent.scheduler.cron:0 0 */5 * * *}") // Default: every 5 hours
+    @Scheduled(fixedRateString = "\${koog.breed-research-agent.scheduler.fixed-rate:PT5H}") // Default: every 5 hours
     fun runDailyBreedResearchTask() {
         log.info { "Breed Research scheduled task started at: ${LocalDateTime.now()}" }
         if (!koogBreedResearchAgent.isReady()) {
@@ -80,26 +80,23 @@ class BreedResearcherScheduledTaskService(
         var breedId = -1
         var breedName = "UNKNOWN"
         var fieldsUpdated = emptyList<String>()
+        var report: String? = null
+        var sourcesFound = emptyList<String>()
 
         if (response != null && response.isNotBlank()) {
-            // Try to find and parse the save_breed_research result from the agent's response
-            val saveResultJson = extractSaveResultJson(response)
-            if (saveResultJson != null) {
-                try {
-                    val result = json.decodeFromString<SaveBreedResearchResult>(saveResultJson)
-                    breedId = result.breedId
-                    breedName = result.breedName
-                    fieldsUpdated = result.fieldsUpdated
-                    outcome = if (result.success) AgentRunOutcome.SUCCESS else AgentRunOutcome.FAILED
-                    if (!result.success) {
-                        failureReason = result.error
-                    }
-                    log.info { "Parsed save result: success=${result.success}, breed='$breedName', fields=$fieldsUpdated" }
-                } catch (ex: Exception) {
-                    log.warn(ex) { "Could not parse save_breed_research result, treating as success if agent completed" }
-                    // If we can't parse but agent returned something, assume it worked
-                    outcome = AgentRunOutcome.SUCCESS
+            // Parse save_breed_research JSON result from the agent response.
+            val result = parseSaveResult(response)
+            if (result != null) {
+                breedId = result.breedId
+                breedName = result.breedName
+                fieldsUpdated = result.fieldsUpdated
+                report = result.savedData?.description
+                sourcesFound = result.savedData?.sources ?: emptyList()
+                outcome = if (result.success) AgentRunOutcome.SUCCESS else AgentRunOutcome.FAILED
+                if (!result.success) {
+                    failureReason = result.error
                 }
+                log.info { "Parsed save result: success=${result.success}, breed='$breedName', fields=$fieldsUpdated" }
             } else {
                 // Agent returned a response but we couldn't find save result - agent may have just chatted
                 log.warn { "Agent response did not contain save_breed_research result" }
@@ -128,8 +125,8 @@ class BreedResearcherScheduledTaskService(
             completedAt = completedAt,
             durationMillis = Duration.between(startedAt, completedAt).toMillis(),
             outcome = outcome,
-            report = null, // Report is now stored with the breed, not separately
-            sourcesFound = emptyList(), // Sources are now stored with the breed
+            report = report,
+            sourcesFound = sourcesFound,
             fieldsUpdated = fieldsUpdated,
             errorMessage = when {
                 outcome != AgentRunOutcome.FAILED -> null
@@ -150,36 +147,77 @@ class BreedResearcherScheduledTaskService(
     }
 
     /**
+     * Parses save_breed_research JSON from the response.
+     *
+     * First attempts to parse the full response as JSON (the expected path).
+     * If that fails, attempts to extract the JSON object containing "success".
+     */
+    private fun parseSaveResult(response: String): SaveBreedResearchResult? {
+        val trimmed = response.trim()
+
+        // Expected case: strategy returns the tool JSON directly.
+        try {
+            return json.decodeFromString<SaveBreedResearchResult>(trimmed)
+        } catch (_: Exception) {
+            // Fall through to extraction mode.
+        }
+
+        val saveResultJson = extractSaveResultJson(trimmed) ?: return null
+        return try {
+            json.decodeFromString<SaveBreedResearchResult>(saveResultJson)
+        } catch (ex: Exception) {
+            log.warn(ex) { "Failed to parse extracted save_breed_research JSON" }
+            null
+        }
+    }
+
+    /**
      * Extracts the JSON result from save_breed_research tool from the agent's response.
      * The response may contain the tool result embedded in the agent's final message.
      */
     private fun extractSaveResultJson(response: String): String? {
-        // Look for JSON that matches our SaveBreedResearchResult structure
-        val jsonPattern = """\{[^{}]*"success"\s*:\s*(true|false)[^{}]*"breedId"\s*:\s*\d+[^{}]*\}""".toRegex()
-        val match = jsonPattern.find(response)
-        if (match != null) {
-            return match.value
+        val successKeyIndex = response.indexOf("\"success\"")
+        if (successKeyIndex < 0) {
+            return null
         }
 
-        // Try to find any JSON object with success field using brace matching
-        val startIndex = response.indexOf("{\"success\"")
-        if (startIndex >= 0) {
-            var braceCount = 0
-            var endIndex = startIndex
-            for (i in startIndex until response.length) {
-                when (response[i]) {
+        val startIndex = response.lastIndexOf('{', successKeyIndex)
+        if (startIndex < 0) {
+            return null
+        }
+
+        var braceCount = 0
+        var inString = false
+        var escaping = false
+
+        for (i in startIndex until response.length) {
+            val char = response[i]
+
+            if (escaping) {
+                escaping = false
+                continue
+            }
+
+            if (char == '\\' && inString) {
+                escaping = true
+                continue
+            }
+
+            if (char == '"') {
+                inString = !inString
+                continue
+            }
+
+            if (!inString) {
+                when (char) {
                     '{' -> braceCount++
                     '}' -> {
                         braceCount--
                         if (braceCount == 0) {
-                            endIndex = i + 1
-                            break
+                            return response.substring(startIndex, i + 1)
                         }
                     }
                 }
-            }
-            if (endIndex > startIndex) {
-                return response.substring(startIndex, endIndex)
             }
         }
 

@@ -38,7 +38,7 @@ class ChickenFactResearcherScheduledTaskService(
     private val log = KotlinLogging.logger {}
     private val json = Json { ignoreUnknownKeys = true }
 
-    @Scheduled(cron = "\${koog.agent.scheduler.cron:0 30 */5 * * *}") // Default: every 5 hours at :30
+    @Scheduled(fixedRateString = "\${koog.agent.scheduler.fixed-rate:PT5H}") // Default: every 5 hours
     fun runDailyChickenFactResearcherTask() {
         log.info { "Chicken Fact Researcher scheduled task started at: ${LocalDateTime.now()}" }
         if (!koogChickenFactsAgent.isReady()) {
