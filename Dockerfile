@@ -18,7 +18,9 @@ FROM eclipse-temurin:21-jre-alpine
 LABEL authors="qWeX23"
 WORKDIR /app
 
-RUN addgroup -S spring && adduser -S spring -G spring
+RUN apk add --no-cache curl \
+ && addgroup -S spring \
+ && adduser -S spring -G spring
 
 COPY --from=build /workspace/build/libs/*.jar /app/app.jar
 

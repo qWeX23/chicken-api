@@ -19,7 +19,7 @@ services:
     networks:
       - shared
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:8080/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8080/actuator/health > /dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
