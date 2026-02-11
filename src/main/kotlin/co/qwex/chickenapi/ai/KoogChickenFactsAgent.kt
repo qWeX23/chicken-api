@@ -37,6 +37,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging as OshaiKotlinLogging
 @Service
 class KoogChickenFactsAgent(
     private val properties: KoogAgentProperties,
+    private val chickenFactDuplicateCheckService: ChickenFactDuplicateCheckService,
     @Qualifier("koogChickenFactsHttpClient")
     private val httpClientProvider: ObjectProvider<HttpClient>,
 ) {
@@ -77,7 +78,7 @@ class KoogChickenFactsAgent(
                 contextLength = 131_072,
             )
 
-        val saveChickenFactTool = SaveChickenFactTool()
+        val saveChickenFactTool = SaveChickenFactTool(chickenFactDuplicateCheckService)
         val webSearchTool =
             WebSearchTool(
                 httpClient = webToolClient,
@@ -151,6 +152,7 @@ class KoogChickenFactsAgent(
                     promptExecutor = activeRuntime.promptExecutor,
                     strategy = chickenResearchStrategy(
                         maxToolCalls = 4,
+                        maxDuplicateRetries = 3,
                     ),
                     toolRegistry = activeRuntime.toolRegistry,
                     agentConfig = activeRuntime.agentConfig,
@@ -217,7 +219,9 @@ class KoogChickenFactsAgent(
  * Tool for saving a chicken fact with structured output.
  * This is the final tool that should be called to save the research result.
  */
-class SaveChickenFactTool : SimpleTool<SaveChickenFactTool.Args>() {
+class SaveChickenFactTool(
+    private val duplicateCheckService: ChickenFactDuplicateCheckService,
+) : SimpleTool<SaveChickenFactTool.Args>() {
     private val log = KotlinLogging.logger {}
 
     @Serializable
@@ -228,15 +232,28 @@ class SaveChickenFactTool : SimpleTool<SaveChickenFactTool.Args>() {
         val sourceUrl: String,
     )
 
+    @Serializable
+    data class Result(
+        val fact: String,
+        val sourceUrl: String,
+        val duplicateCheck: FactDuplicateCheckResult,
+    )
+
     override val argsSerializer = Args.serializer()
     override val name = "save_chicken_fact"
     override val description = "Saves a chicken fact with its source URL. This should be called once you have found a good chicken fact from your research. Returns a confirmation message."
 
     override suspend fun doExecute(args: Args): String {
         log.info { "Saving chicken fact with URL: ${args.sourceUrl}" }
-        // The actual saving will happen in the strategy
-        // This tool just validates and returns the structured data
-        return json.encodeToString(Args.serializer(), args)
+        val duplicateCheck = duplicateCheckService.checkFactForDuplicate(args.fact)
+        return json.encodeToString(
+            Result.serializer(),
+            Result(
+                fact = args.fact,
+                sourceUrl = args.sourceUrl,
+                duplicateCheck = duplicateCheck,
+            ),
+        )
     }
 
     companion object {

@@ -9,6 +9,7 @@ import ai.koog.agents.core.dsl.extension.nodeLLMSendToolResult
 import ai.koog.agents.core.dsl.extension.onAssistantMessage
 import ai.koog.agents.core.dsl.extension.onToolCall
 import ai.koog.agents.core.environment.ReceivedToolResult
+import kotlinx.serialization.json.Json
 import mu.KotlinLogging
 
 private val log = KotlinLogging.logger {}
@@ -16,70 +17,87 @@ private val log = KotlinLogging.logger {}
 /**
  * Custom chicken research strategy that enforces:
  * - A maximum number of tool calls (default 4)
- * - Forces final answer generation when tool limit is reached
- * - Expects save_chicken_fact tool to be called to return structured JSON output
+ * - save_chicken_fact calls run duplicate checks
+ * - Duplicate hits restart research with feedback up to maxDuplicateRetries
  */
 fun chickenResearchStrategy(
     maxToolCalls: Int = 4,
+    maxDuplicateRetries: Int = 3,
 ): AIAgentGraphStrategy<String, String> = strategy<String, String>("chicken_research") {
-    // Per-run tool call counter (reset at start node)
     var toolCalls = 0
-    // Track if save_chicken_fact was called
+    var duplicateRetries = 0
     var savedFactJson: String? = null
+    var duplicateFeedback: String? = null
 
-    // 1) Reset counter on each run
     val resetToolCounter by node<String, String>("reset_tool_counter") { input ->
         toolCalls = 0
+        duplicateRetries = 0
         savedFactJson = null
-        log.info { "Starting new chicken research run, tool counter reset" }
+        duplicateFeedback = null
+        log.info { "Starting new chicken research run, counters reset" }
         input
     }
 
-    // 2) Main LLM node (can call tools)
     val callLLM by nodeLLMRequest(
         name = "call_llm",
         allowToolCalls = true,
     )
 
-    // 3) Tool nodes
     val executeTool by nodeExecuteTool()
 
-    // Capture save_chicken_fact result
     val captureToolResult by node<ReceivedToolResult, ReceivedToolResult>("capture_tool_result") { toolResult ->
-        // Check if this was save_chicken_fact by looking at the result
         val result = toolResult.result.toString()
-        if (result.contains("\"fact\"") && result.contains("\"sourceUrl\"")) {
-            savedFactJson = result
-            log.info { "Captured save_chicken_fact result" }
+        val parsedResult = runCatching {
+            json.decodeFromString(SaveChickenFactTool.Result.serializer(), result)
+        }.getOrNull()
+
+        if (parsedResult == null) {
+            toolResult
+        } else {
+            if (parsedResult.duplicateCheck.hasHit) {
+                duplicateRetries += 1
+                duplicateFeedback = json.encodeToString(FactDuplicateCheckResult.serializer(), parsedResult.duplicateCheck)
+                savedFactJson = null
+                log.warn {
+                    "Detected duplicate chicken fact candidate (retry $duplicateRetries/$maxDuplicateRetries), requesting a new fact."
+                }
+            } else {
+                duplicateFeedback = null
+                savedFactJson = json.encodeToString(
+                    SavedChickenFactResult.serializer(),
+                    SavedChickenFactResult(
+                        fact = parsedResult.fact,
+                        sourceUrl = parsedResult.sourceUrl,
+                    ),
+                )
+                log.info { "Captured save_chicken_fact result with no duplicate hit" }
+            }
+            toolResult
         }
-        toolResult
     }
 
     val sendToolResult by nodeLLMSendToolResult()
 
-    // 4) "Force final answer" node (tells LLM to call save_chicken_fact)
     val requestSaveFact by nodeLLMRequest(
         name = "request_save_fact",
         allowToolCalls = true,
     )
 
-    // 5) Return the saved fact JSON or fallback
     val returnResult by node<String, String>("return_result") { _ ->
-        savedFactJson ?: run {
-            log.warn { "No saved fact found, returning empty result" }
+        if (duplicateFeedback != null && duplicateRetries > maxDuplicateRetries) {
+            log.error { "Duplicate retry limit exceeded ($duplicateRetries > $maxDuplicateRetries), failing chicken fact run" }
             "{}"
+        } else {
+            savedFactJson ?: run {
+                log.warn { "No saved fact found, returning empty result" }
+                "{}"
+            }
         }
     }
 
-    // ─────────────────────────────
-    // Graph wiring
-    // ─────────────────────────────
-
-    // Start → reset tool counter → first LLM call
     edge(nodeStart forwardTo resetToolCounter)
     edge(resetToolCounter forwardTo callLLM)
 
-    // If LLM calls a tool and we're still under the cap → execute it
     edge(
         callLLM forwardTo executeTool onToolCall { _ ->
             toolCalls++
@@ -89,7 +107,6 @@ fun chickenResearchStrategy(
         },
     )
 
-    // If LLM tries to call tools *after* the cap → force save_chicken_fact call
     edge(
         callLLM forwardTo requestSaveFact onToolCall { _ ->
             val exceedsMax = toolCalls > maxToolCalls
@@ -110,22 +127,39 @@ fun chickenResearchStrategy(
         },
     )
 
-    // If LLM gives assistant message without calling save_chicken_fact → return what we have
     edge(
         callLLM forwardTo returnResult onAssistantMessage { true },
     )
     edge(returnResult forwardTo nodeFinish)
 
-    // Execute tool → capture result → send to LLM
     edge(executeTool forwardTo captureToolResult)
     edge(captureToolResult forwardTo sendToolResult)
 
-    // After tool result, check if save_chicken_fact was called
     edge(
-        sendToolResult forwardTo returnResult onAssistantMessage { savedFactJson != null },
+        sendToolResult forwardTo returnResult onAssistantMessage {
+            savedFactJson != null || (duplicateFeedback != null && duplicateRetries > maxDuplicateRetries)
+        },
     )
 
-    // After tool result, if save_chicken_fact not called and under cap → allow more tools
+    edge(
+        sendToolResult forwardTo callLLM onAssistantMessage {
+            duplicateFeedback != null && duplicateRetries <= maxDuplicateRetries
+        } transformed {
+            """
+            The proposed fact is too similar to an existing fact already in the database.
+
+            Duplicate check details:
+            ${duplicateFeedback.orEmpty()}
+
+            You must produce a genuinely different chicken fact.
+            - Do not paraphrase the same core claim.
+            - Choose a distinct topic, behavior, historical event, or trivia angle.
+            - You may continue researching with web_search/web_fetch if needed.
+            - When ready, call save_chicken_fact again with the new fact and source URL.
+            """.trimIndent()
+        },
+    )
+
     edge(
         sendToolResult forwardTo executeTool onToolCall { _ ->
             toolCalls++
@@ -135,7 +169,6 @@ fun chickenResearchStrategy(
         },
     )
 
-    // After tool result, if save_chicken_fact not called but cap exceeded → force save
     edge(
         sendToolResult forwardTo requestSaveFact onToolCall { _ ->
             val exceedsMax = toolCalls > maxToolCalls && savedFactJson == null
@@ -156,8 +189,16 @@ fun chickenResearchStrategy(
         },
     )
 
-    // Request save fact → execute it
     edge(
         requestSaveFact forwardTo executeTool onToolCall { true },
     )
 }
+
+
+@kotlinx.serialization.Serializable
+private data class SavedChickenFactResult(
+    val fact: String,
+    val sourceUrl: String,
+)
+
+private val json = Json { ignoreUnknownKeys = true }
