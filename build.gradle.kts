@@ -41,8 +41,12 @@ configurations.all {
 }
 
 dependencies {
+    implementation(platform("io.opentelemetry:opentelemetry-bom:1.53.0"))
     implementation("ai.koog:koog-agents:0.5.2")
+    implementation("ai.koog:agents-features-opentelemetry:0.5.2")
     implementation("com.squareup.okio:okio:3.9.0")
+    implementation("io.opentelemetry:opentelemetry-exporter-otlp:1.53.0")
+    implementation("io.opentelemetry:opentelemetry-exporter-sender-okhttp:1.53.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:$serializationVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:$serializationVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")

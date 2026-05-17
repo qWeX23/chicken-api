@@ -4,6 +4,7 @@ import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.features.tracing.feature.Tracing
+import ai.koog.agents.features.opentelemetry.feature.OpenTelemetry
 import ai.koog.agents.features.tracing.writer.TraceFeatureMessageLogWriter
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.executor.llms.SingleLLMPromptExecutor
@@ -17,12 +18,15 @@ import co.qwex.chickenapi.ai.tools.SaveBreedResearchTool
 import co.qwex.chickenapi.ai.tools.WebFetchTool
 import co.qwex.chickenapi.ai.tools.WebSearchTool
 import co.qwex.chickenapi.config.BreedResearchAgentProperties
+import co.qwex.chickenapi.config.PhoenixTracingProperties
 import co.qwex.chickenapi.repository.BreedRepository
 import io.github.oshai.kotlinlogging.KotlinLogging as OshaiKotlinLogging
 import io.ktor.client.HttpClient
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import mu.KotlinLogging
+import io.opentelemetry.api.common.AttributeKey
+import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
@@ -35,6 +39,9 @@ import org.springframework.stereotype.Service
 @Service
 class KoogBreedResearchAgent(
     private val properties: BreedResearchAgentProperties,
+    private val phoenixTracingProperties: PhoenixTracingProperties,
+    private val phoenixSpanExporterProvider: ObjectProvider<OtlpHttpSpanExporter>,
+    private val phoenixResourceAttributesProvider: ObjectProvider<Map<AttributeKey<String>, String>>,
     private val breedRepository: BreedRepository,
     @Qualifier("koogBreedResearchHttpClient")
     private val httpClientProvider: ObjectProvider<HttpClient>,
@@ -147,6 +154,23 @@ class KoogBreedResearchAgent(
                 ) {
                     install(Tracing) {
                         addMessageProcessor(TraceFeatureMessageLogWriter(OshaiKotlinLogging.logger {}))
+                    }
+                    if (phoenixTracingProperties.enabled) {
+                        val phoenixSpanExporter = phoenixSpanExporterProvider.getIfAvailable()
+                        if (phoenixSpanExporter != null) {
+                            val phoenixResourceAttributes = phoenixResourceAttributesProvider.getIfAvailable().orEmpty()
+                            install(OpenTelemetry) {
+                                setServiceInfo(
+                                    phoenixTracingProperties.serviceName,
+                                    phoenixTracingProperties.serviceVersion,
+                                )
+                                addSpanExporter(phoenixSpanExporter)
+                                addResourceAttributes(
+                                    phoenixResourceAttributes +
+                                        mapOf(AttributeKey.stringKey("llm.application") to "breed-research-agent"),
+                                )
+                            }
+                        }
                     }
                 }
             agent.run(BREED_RESEARCH_USER_PROMPT)

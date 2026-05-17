@@ -27,8 +27,12 @@ import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
 import ai.koog.agents.features.tracing.feature.Tracing
+import ai.koog.agents.features.opentelemetry.feature.OpenTelemetry
 import ai.koog.agents.features.tracing.writer.TraceFeatureMessageLogWriter
 import io.github.oshai.kotlinlogging.KotlinLogging as OshaiKotlinLogging
+import co.qwex.chickenapi.config.PhoenixTracingProperties
+import io.opentelemetry.api.common.AttributeKey
+import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter
 
 /**
  * Wraps a Koog single-run agent that talks to Ollama Cloud and exposes the
@@ -37,6 +41,9 @@ import io.github.oshai.kotlinlogging.KotlinLogging as OshaiKotlinLogging
 @Service
 class KoogChickenFactsAgent(
     private val properties: KoogAgentProperties,
+    private val phoenixTracingProperties: PhoenixTracingProperties,
+    private val phoenixSpanExporterProvider: ObjectProvider<OtlpHttpSpanExporter>,
+    private val phoenixResourceAttributesProvider: ObjectProvider<Map<AttributeKey<String>, String>>,
     private val chickenFactDuplicateCheckService: ChickenFactDuplicateCheckService,
     @Qualifier("koogChickenFactsHttpClient")
     private val httpClientProvider: ObjectProvider<HttpClient>,
@@ -200,6 +207,23 @@ class KoogChickenFactsAgent(
                         //     targetPath = Path("agenttraces/agent-traces-${System.currentTimeMillis()}.log")
                         // ))
                     }
+                    if (phoenixTracingProperties.enabled) {
+                        val phoenixSpanExporter = phoenixSpanExporterProvider.getIfAvailable()
+                        if (phoenixSpanExporter != null) {
+                            val phoenixResourceAttributes = phoenixResourceAttributesProvider.getIfAvailable().orEmpty()
+                            install(OpenTelemetry) {
+                                setServiceInfo(
+                                    phoenixTracingProperties.serviceName,
+                                    phoenixTracingProperties.serviceVersion,
+                                )
+                                addSpanExporter(phoenixSpanExporter)
+                                addResourceAttributes(
+                                    phoenixResourceAttributes +
+                                        mapOf(AttributeKey.stringKey("llm.application") to "chicken-facts-agent"),
+                                )
+                            }
+                        }
+                    }
                 }
             agent.run(properties.prompt)
         } catch (ex: Exception) {
@@ -246,7 +270,7 @@ class SaveChickenFactTool(
     override suspend fun doExecute(args: Args): String {
         log.info { "Saving chicken fact with URL: ${args.sourceUrl}" }
         val duplicateCheck = duplicateCheckService.checkFactForDuplicate(args.fact)
-        return json.encodeToString(
+        return jsonCodec.encodeToString(
             Result.serializer(),
             Result(
                 fact = args.fact,
@@ -257,7 +281,7 @@ class SaveChickenFactTool(
     }
 
     companion object {
-        private val json = Json { prettyPrint = true }
+        private val jsonCodec = Json { prettyPrint = true }
     }
 }
 
@@ -273,7 +297,6 @@ class WebSearchTool(
     private val model: LLModel?,
 ) : SimpleTool<WebSearchTool.Args>() {
     private val log = KotlinLogging.logger {}
-    private val json = Json { ignoreUnknownKeys = true }
 
     @Serializable
     data class Args(
@@ -368,7 +391,7 @@ class WebFetchTool(
     private val model: LLModel?,
 ) : SimpleTool<WebFetchTool.Args>() {
     private val log = KotlinLogging.logger {}
-    private val json = Json { ignoreUnknownKeys = true }
+    private val jsonCodec = Json { ignoreUnknownKeys = true }
 
     @Serializable
     data class Args(
@@ -427,7 +450,7 @@ class WebFetchTool(
         } catch (ex: Exception) {
             log.error(ex) { "Failed to summarize web content from ${args.url}" }
             // Fallback to raw content if summarization fails
-            json.encodeToString(result)
+            jsonCodec.encodeToString(result)
         }
     }
 }

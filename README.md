@@ -38,6 +38,49 @@ We welcome contributions of all kinds! Here are a few ways you can help:
 
 - First-time production setup guide: `docs/PRODUCTION_FIRST_TIME_SETUP.md`
 
+## Phoenix tracing for AI agents
+
+This project can export Koog agent traces to **Arize Phoenix** over OTLP so you can build evaluations from real runs.
+
+### 1) Run Phoenix locally
+
+```bash
+docker run --rm -it -p 6006:6006 arizephoenix/phoenix:latest
+```
+
+Phoenix UI: `http://localhost:6006`
+
+### 2) Enable tracing in `chicken-api`
+
+Set these environment variables before starting the app:
+
+```bash
+export PHOENIX_COLLECTOR_ENDPOINT=http://localhost:6006/v1/traces
+export KOOG_TRACING_PHOENIX_ENABLED=true
+```
+
+Optional overrides:
+
+- `PHOENIX_PROJECT_NAME` (default: `chicken-api`)
+- `KOOG_TRACING_PHOENIX_SERVICE_NAME` (default: `chicken-api-agents`)
+- `KOOG_TRACING_PHOENIX_SERVICE_VERSION` (default: `0.0.1`)
+- `KOOG_TRACING_PHOENIX_DEPLOYMENT_ENVIRONMENT` (default: current Spring profile)
+
+### 3) Trigger agent runs
+
+Run your normal agent flows (scheduled runs or manual trigger endpoints). Both agents now emit traces:
+
+- `KoogChickenFactsAgent`
+- `KoogBreedResearchAgent`
+
+You should see LLM calls, tool calls, and agent execution spans in Phoenix within a few seconds.
+
+### Why this is standard practice
+
+- **OTLP over HTTP to `/v1/traces`** is Phoenix’s standard collector path for local/self-hosted tracing.
+- **Single shared exporter** is a common OpenTelemetry pattern to avoid repeatedly constructing exporter instances during runtime.
+- **Project grouping** via `x-project-name` and `openinference.project.name` resource attribute is the standard way to keep traces organized for app vs eval workflows.
+
 ## Logging
 
 The application uses [kotlin-logging](https://github.com/MicroUtils/kotlin-logging) with Logback. Log messages include a `requestId` for correlation and are written in plain text locally and JSON in production.
