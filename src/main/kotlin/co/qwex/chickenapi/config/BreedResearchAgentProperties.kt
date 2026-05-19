@@ -10,8 +10,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 @ConfigurationProperties(prefix = "koog.breed-research-agent")
 data class BreedResearchAgentProperties(
     val enabled: Boolean = true,
-    val baseUrl: String = "https://ollama.com",
-    val webToolsBaseUrl: String = baseUrl,
     val model: String = "gpt-oss:120b",
     val webSearchMaxResults: Int = 3,
     val maxAgentIterations: Int = 100,

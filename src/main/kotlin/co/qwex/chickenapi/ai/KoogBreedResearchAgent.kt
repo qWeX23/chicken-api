@@ -18,6 +18,7 @@ import co.qwex.chickenapi.ai.tools.SaveBreedResearchTool
 import co.qwex.chickenapi.ai.tools.WebFetchTool
 import co.qwex.chickenapi.ai.tools.WebSearchTool
 import co.qwex.chickenapi.config.BreedResearchAgentProperties
+import co.qwex.chickenapi.config.KoogOllamaProperties
 import co.qwex.chickenapi.config.PhoenixTracingProperties
 import co.qwex.chickenapi.repository.BreedRepository
 import io.github.oshai.kotlinlogging.KotlinLogging as OshaiKotlinLogging
@@ -39,6 +40,7 @@ import org.springframework.stereotype.Service
 @Service
 class KoogBreedResearchAgent(
     private val properties: BreedResearchAgentProperties,
+    private val ollamaProperties: KoogOllamaProperties,
     private val phoenixTracingProperties: PhoenixTracingProperties,
     private val phoenixSpanExporterProvider: ObjectProvider<OtlpHttpSpanExporter>,
     private val phoenixResourceAttributesProvider: ObjectProvider<Map<AttributeKey<String>, String>>,
@@ -47,10 +49,8 @@ class KoogBreedResearchAgent(
     private val httpClientProvider: ObjectProvider<HttpClient>,
 ) {
     private val log = KotlinLogging.logger {}
-    private val sanitizedBaseUrl =
-        properties.baseUrl.trim().removeSuffix("/").removeSuffix("/api")
-    private val sanitizedWebToolsBaseUrl =
-        properties.webToolsBaseUrl.trim().removeSuffix("/").removeSuffix("/api")
+    private val sanitizedBaseUrl = ollamaProperties.normalizedBaseUrl
+    private val sanitizedWebToolsBaseUrl = ollamaProperties.normalizedWebToolsBaseUrl
 
     private var runtime: AgentRuntime? = null
 
@@ -125,7 +125,7 @@ class KoogBreedResearchAgent(
 
         runtime = AgentRuntime(llmHttpClient, webToolClient, toolRegistry, promptExecutor, model, agentConfig)
         log.info {
-            "Koog breed research agent initialized with model ${properties.model}; llm base ${properties.baseUrl}; web tools base ${properties.webToolsBaseUrl}"
+            "Koog breed research agent initialized with model ${properties.model}; llm base ${ollamaProperties.baseUrl}; web tools base ${ollamaProperties.webToolsBaseUrl}"
         }
     }
 
@@ -196,6 +196,7 @@ class KoogBreedResearchAgent(
             2. Call `get_breed_details` to see what information we currently have
             3. Use `web_search` and `web_fetch` to research the breed (up to 8 tool calls total)
             4. Call `save_breed_research` with your findings
+            5. When using a URL from `web_search`, copy the `Exact URL` value verbatim into `web_fetch`
 
             ## Research Focus
 

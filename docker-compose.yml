@@ -1,4 +1,13 @@
 services:
+  phoenix:
+    container_name: phoenix
+    image: arizephoenix/phoenix:latest
+    restart: unless-stopped
+    ports:
+      - "${PHOENIX_PORT:-6006}:6006"
+    networks:
+      - shared
+
   chicken-api:
     container_name: chicken-api
     image: chicken-api:latest
@@ -12,8 +21,13 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-credentials.json
-      KOOG_AGENT_BASE_URL: ${KOOG_AGENT_BASE_URL:-http://ollama:11434}
-      KOOG_AGENT_API_KEY: ${KOOG_AGENT_API_KEY:?Set KOOG_AGENT_API_KEY}
+      KOOG_OLLAMA_BASE_URL: ${KOOG_OLLAMA_BASE_URL:-${KOOG_AGENT_BASE_URL:-http://ollama:11434}}
+      KOOG_OLLAMA_WEB_TOOLS_BASE_URL: ${KOOG_OLLAMA_WEB_TOOLS_BASE_URL:-https://ollama.com}
+      KOOG_OLLAMA_API_KEY: ${KOOG_OLLAMA_API_KEY:-${KOOG_AGENT_API_KEY:-${OLLAMA_API_KEY:-}}}
+      KOOG_AGENT_MODEL: ${KOOG_AGENT_MODEL:-gpt-oss:120b-cloud}
+      KOOG_TRACING_PHOENIX_ENABLED: ${KOOG_TRACING_PHOENIX_ENABLED:-true}
+      PHOENIX_COLLECTOR_ENDPOINT: ${PHOENIX_COLLECTOR_ENDPOINT:-http://phoenix:6006/v1/traces}
+      PHOENIX_PROJECT_NAME: ${PHOENIX_PROJECT_NAME:-chicken-api}
     volumes:
       - ${GOOGLE_APPLICATION_CREDENTIALS_FILE:?Set GOOGLE_APPLICATION_CREDENTIALS_FILE}:/run/secrets/google-credentials.json:ro
     networks:

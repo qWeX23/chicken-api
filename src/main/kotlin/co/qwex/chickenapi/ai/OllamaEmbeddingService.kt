@@ -1,6 +1,6 @@
 package co.qwex.chickenapi.ai
 
-import co.qwex.chickenapi.config.KoogAgentProperties
+import co.qwex.chickenapi.config.KoogOllamaProperties
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
@@ -23,12 +23,11 @@ import org.springframework.stereotype.Service
 
 @Service
 class OllamaEmbeddingService(
-    private val properties: KoogAgentProperties,
+    private val ollamaProperties: KoogOllamaProperties,
 ) {
     private val log = KotlinLogging.logger {}
     private val json = Json { ignoreUnknownKeys = true }
-    private val sanitizedBaseUrl =
-        properties.baseUrl.trim().removeSuffix("/").removeSuffix("/api")
+    private val sanitizedBaseUrl = ollamaProperties.normalizedBaseUrl
     private val httpClient = buildHttpClient()
 
     fun isReady(): Boolean = httpClient != null
@@ -43,7 +42,7 @@ class OllamaEmbeddingService(
             client.post("$sanitizedBaseUrl/api/embeddings") {
                 setBody(
                     EmbeddingRequest(
-                        model = properties.embeddingModel,
+                        model = ollamaProperties.embeddingModel,
                         prompt = fact,
                     ),
                 )
@@ -67,7 +66,7 @@ class OllamaEmbeddingService(
     }
 
     private fun buildHttpClient(): HttpClient? {
-        val apiKey = properties.apiKey?.takeIf { it.isNotBlank() } ?: return null
+        val apiKey = ollamaProperties.apiKey?.takeIf { it.isNotBlank() } ?: return null
         return HttpClient(CIO) {
             defaultRequest {
                 header(HttpHeaders.Authorization, "Bearer $apiKey")
