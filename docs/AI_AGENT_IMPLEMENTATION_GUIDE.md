@@ -167,19 +167,24 @@ For most agents, requiring exactly one final `save_*` tool call makes the run ou
 
 ## 7) Define and Bind Configuration Properties
 
-Create `@ConfigurationProperties(prefix = "koog.foo-agent")` with at least:
+Create `@ConfigurationProperties(prefix = "koog.foo-agent")` with agent-specific settings such as:
 
 - `enabled`
-- `baseUrl`
-- `webToolsBaseUrl`
 - `model`
 - `webSearchMaxResults` *(if web search tools are used)*
 - `maxAgentIterations`
 - `maxToolCalls` *(if strategy enforces it)*
 
+Keep shared Ollama runtime settings under `koog.ollama.*`, for example:
+
+- `koog.ollama.base-url`
+- `koog.ollama.web-tools-base-url`
+- `koog.ollama.api-key`
+- `koog.ollama.embedding-model`
+
 Then add defaults in `src/main/resources/application.properties`, following existing naming patterns.
 
-If credentials are required, follow existing credential-validation patterns (`@RequireKoogCredentials`) where appropriate.
+If credentials are required, validate them through shared startup validation such as `KoogOllamaConfigurationValidator` rather than duplicating per-agent URL and auth settings.
 
 ---
 

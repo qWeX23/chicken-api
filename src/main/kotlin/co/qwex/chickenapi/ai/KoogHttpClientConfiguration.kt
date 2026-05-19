@@ -1,6 +1,6 @@
 package co.qwex.chickenapi.ai
 
-import co.qwex.chickenapi.config.KoogAgentProperties
+import co.qwex.chickenapi.config.KoogOllamaProperties
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -22,9 +22,9 @@ class KoogHttpClientConfiguration {
     @Bean
     @Qualifier("koogChickenFactsHttpClient")
     @ConditionalOnExpression(
-        "\${koog.agent.enabled:true} && '\${koog.agent.api-key:}' != ''",
+        "\${koog.agent.enabled:true} && '\${koog.ollama.api-key:}' != ''",
     )
-    fun koogChickenFactsHttpClient(properties: KoogAgentProperties): HttpClient =
+    fun koogChickenFactsHttpClient(properties: KoogOllamaProperties): HttpClient =
         createAuthorizedClient(
             apiKey = properties.apiKey.orEmpty(),
             extraHeaders = properties.extraHeaders,
@@ -33,14 +33,14 @@ class KoogHttpClientConfiguration {
     @Bean
     @Qualifier("koogBreedResearchHttpClient")
     @ConditionalOnExpression(
-        "\${koog.breed-research-agent.enabled:true} && '\${koog.agent.api-key:}' != ''",
+        "\${koog.breed-research-agent.enabled:true} && '\${koog.ollama.api-key:}' != ''",
     )
     fun koogBreedResearchHttpClient(
-        agentProperties: KoogAgentProperties,
+        ollamaProperties: KoogOllamaProperties,
     ): HttpClient =
         createAuthorizedClient(
-            apiKey = agentProperties.apiKey.orEmpty(),
-            extraHeaders = agentProperties.extraHeaders,
+            apiKey = ollamaProperties.apiKey.orEmpty(),
+            extraHeaders = ollamaProperties.extraHeaders,
         )
 
     private fun createAuthorizedClient(

@@ -51,14 +51,17 @@ Set values in `.env`:
 | Variable | Required | Description |
 |---|---|---|
 | `GOOGLE_APPLICATION_CREDENTIALS_FILE` | Yes | Absolute host path to Google credentials JSON |
-| `KOOG_AGENT_API_KEY` | Yes | API key for `koog.agent.api-key` |
+| `KOOG_OLLAMA_API_KEY` | Yes | API key for direct calls to Ollama's hosted API |
 | `CHICKEN_API_PORT` | No | Host port mapped to container `8080` (default `8080`) |
-| `KOOG_AGENT_BASE_URL` | No | Ollama base URL on `shared` (default `http://ollama:11434`) |
+| `KOOG_OLLAMA_BASE_URL` | No | Ollama base URL on `shared` for LLM and embeddings (default `http://ollama:11434`) |
+| `KOOG_OLLAMA_WEB_TOOLS_BASE_URL` | No | Hosted Ollama web-tools base URL for `web_search` and `web_fetch` (default `https://ollama.com`) |
 
 Notes:
 
-- `KOOG_AGENT_BASE_URL` should point to the Ollama service/container name reachable on `shared`.
-- If your Ollama container is not named `ollama`, update this value.
+- `KOOG_OLLAMA_BASE_URL` should point to the Ollama service/container name reachable on `shared`.
+- `KOOG_OLLAMA_WEB_TOOLS_BASE_URL` should normally remain `https://ollama.com`.
+- If your Ollama container is not named `ollama`, update `KOOG_OLLAMA_BASE_URL`.
+- `KOOG_AGENT_BASE_URL` and `KOOG_AGENT_API_KEY` are still accepted as compatibility fallbacks, but prefer the shared `KOOG_OLLAMA_*` variables.
 - Do not commit `.env` or credentials files.
 
 ## 4) Start the API
@@ -136,9 +139,14 @@ docker network create shared
 ### App cannot reach Ollama
 
 - Verify Ollama container is connected to `shared`
-- Verify `KOOG_AGENT_BASE_URL` uses Ollama's reachable container/service name
+- Verify `KOOG_OLLAMA_BASE_URL` uses Ollama's reachable container/service name
 - From API container, test DNS/connectivity to Ollama host on port `11434`
 
 ### API key validation failure
 
-- Ensure `KOOG_AGENT_API_KEY` is set and non-empty in `.env`
+- Ensure `KOOG_OLLAMA_API_KEY` is set and non-empty in `.env`
+
+### Web tools return `404` from local Ollama
+
+- Verify `KOOG_OLLAMA_WEB_TOOLS_BASE_URL` is `https://ollama.com`
+- Do not point `web_search` or `web_fetch` at the local Ollama container on port `11434`

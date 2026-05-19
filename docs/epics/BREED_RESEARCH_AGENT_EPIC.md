@@ -417,16 +417,19 @@ data class BreedResearchAgentProperties(
 ### application.properties additions
 
 ```properties
+# Shared Ollama runtime
+koog.ollama.base-url=http://ollama:11434
+koog.ollama.web-tools-base-url=https://ollama.com
+
 # Breed Research Agent
 koog.breed-research-agent.enabled=true
-koog.breed-research-agent.base-url=${koog.agent.base-url}
 koog.breed-research-agent.model=${koog.agent.model}
 koog.breed-research-agent.web-search-max-results=3
 koog.breed-research-agent.max-agent-iterations=100
 koog.breed-research-agent.max-tool-calls=8
 ```
 
-> **Note:** The breed research agent reuses the shared Koog credentials (`koog.agent.api-key`).
+> **Note:** The breed research agent reuses the shared Ollama runtime configuration (`koog.ollama.*`).
 
 ---
 

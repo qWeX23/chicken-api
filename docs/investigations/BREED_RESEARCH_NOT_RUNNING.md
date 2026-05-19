@@ -56,28 +56,28 @@ val returnResult by node<String, String>("return_result") { message ->
 
 ---
 
-### 2. Missing `OLLAMA_API_KEY` (Secondary - If Agent Not Ready)
+### 2. Missing Ollama API Key (Secondary - If Agent Not Ready)
 
 **Evidence**:
-- `application.properties:31`: `koog.agent.api-key=${OLLAMA_API_KEY:}`
+- `application.properties`: `koog.ollama.api-key=${KOOG_OLLAMA_API_KEY:${KOOG_AGENT_API_KEY:${OLLAMA_API_KEY:}}}`
 - The syntax `${VAR:}` means: use the environment variable, or default to empty string
 - Empty string fails the `isNotBlank()` check
 
 **Code Path**:
 ```
-RequireKoogCredentialsValidator.kt:
-  if (value.enabled && value.apiKey.isNullOrBlank()) {
+KoogOllamaConfigurationValidator.kt:
+  if ((agent.enabled || breedResearchAgent.enabled) && ollama.apiKey.isNullOrBlank()) {
       // configuration validation fails
   }
 ```
 
 When API key is missing:
-1. Configuration binding fails validation for `koog.agent.api-key`
+1. Startup validation fails for `koog.ollama.api-key`
 2. The application fails fast during startup
 
 **Expected Log Output**:
 ```
-ERROR - Failed to bind properties under 'koog.agent' ...
+ERROR - koog.ollama.api-key must be set when any Koog agent is enabled
 ```
 
 ### 2. Feature Recently Deployed
@@ -97,7 +97,7 @@ The scheduler runs only at midnight UTC daily (`0 0 0 * * *`). There is currentl
 - [x] Cron expression is valid (`0 0 0 * * *` = midnight daily)
 - [x] All required tools are registered in `ToolRegistry`
 - [x] Google Sheets persistence is implemented
-- [x] `OLLAMA_API_KEY` environment variable is set (agent runs)
+- [x] Ollama API key environment variable is set (agent runs)
 - [x] LLM backend is accessible (agent executes)
 - [ ] **BUG**: `BreedResearchStrategy` captures `save_breed_research` result
 
@@ -107,14 +107,15 @@ The scheduler runs only at midnight UTC daily (`0 0 0 * * *`). There is currentl
 
 | Variable | Purpose | Required |
 |----------|---------|----------|
-| `OLLAMA_API_KEY` | API key for LLM authentication | **Yes** |
+| `KOOG_OLLAMA_API_KEY` | API key for direct calls to Ollama's hosted API | **Yes** |
 
 ### Application Properties (with defaults)
 
 | Property | Default | Description |
 |----------|---------|-------------|
 | `koog.breed-research-agent.enabled` | `true` | Master enable/disable flag |
-| `koog.breed-research-agent.base-url` | `https://ollama.com` | LLM API base URL |
+| `koog.ollama.base-url` | `https://ollama.com` | Shared LLM and embedding API base URL |
+| `koog.ollama.web-tools-base-url` | `https://ollama.com` | Hosted web tools API base URL |
 | `koog.breed-research-agent.model` | `gpt-oss:120b` | Model identifier |
 | `koog.breed-research-agent.scheduler.cron` | `0 0 0 * * *` | Cron schedule (midnight UTC) |
 | `koog.breed-research-agent.web-search-max-results` | `3` | Max web search results |
@@ -153,7 +154,7 @@ The scheduler runs only at midnight UTC daily (`0 0 0 * * *`). There is currentl
 
 ### Secondary Actions (If Agent Not Ready)
 
-1. **Verify `OLLAMA_API_KEY`** is set in the deployment environment
+1. **Verify `KOOG_OLLAMA_API_KEY`** is set in the deployment environment
 2. **Verify LLM connectivity** - ensure the Ollama-compatible endpoint is reachable
 
 ### Future Improvements
