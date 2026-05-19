@@ -115,6 +115,7 @@ class KoogChickenFactsAgent(
 
 - When you need new information, call the web_search tool.
 - Optionally use web_fetch to pull supporting content for specific URLs.
+- When using a URL from web_search, copy the `Exact URL` value verbatim into web_fetch.
 - You may call at most 3 tools total (any combination of web_search and web_fetch).
 - Focus on finding interesting tidbits, amusing behaviors, historical stories, or surprising facts rather than scientific papers or academic research.
 - Look for sources like blogs, fun fact websites, farming communities, chicken keeper forums, and general interest articles.

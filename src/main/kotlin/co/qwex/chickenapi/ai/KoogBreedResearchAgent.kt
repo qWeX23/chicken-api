@@ -196,6 +196,7 @@ class KoogBreedResearchAgent(
             2. Call `get_breed_details` to see what information we currently have
             3. Use `web_search` and `web_fetch` to research the breed (up to 8 tool calls total)
             4. Call `save_breed_research` with your findings
+            5. When using a URL from `web_search`, copy the `Exact URL` value verbatim into `web_fetch`
 
             ## Research Focus
 

@@ -1,6 +1,7 @@
 package co.qwex.chickenapi.ai
 
 import co.qwex.chickenapi.ai.tools.WebSearchTool
+import co.qwex.chickenapi.ai.tools.WebFetchTool
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
@@ -22,5 +23,17 @@ class WebSearchToolTests {
     fun `clampMaxResults raises values below lower bound`() {
         val resolved = WebSearchTool.clampMaxResults(requested = 0, defaultMaxResults = 3)
         assertEquals(1, resolved)
+    }
+
+    @Test
+    fun `normalizeUrl trims trailing punctuation that models commonly add`() {
+        val normalized = WebFetchTool.normalizeUrl("https://example.com/chickens?)")
+        assertEquals("https://example.com/chickens", normalized)
+    }
+
+    @Test
+    fun `normalizeUrl preserves real query strings`() {
+        val normalized = WebFetchTool.normalizeUrl("https://example.com/search?q=chicken")
+        assertEquals("https://example.com/search?q=chicken", normalized)
     }
 }

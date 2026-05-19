@@ -67,9 +67,10 @@ class WebSearchTool(
 
         // Summarize each result individually
         val summarizedResults = result.results.mapIndexed { index, searchResult ->
+            val exactTitle = searchResult.title ?: "No title"
+            val exactUrl = searchResult.url ?: "No URL"
             val resultText = buildString {
-                appendLine("Title: ${searchResult.title ?: "No title"}")
-                appendLine("URL: ${searchResult.url ?: "No URL"}")
+                appendLine("Title: $exactTitle")
                 appendLine("Content: ${searchResult.content ?: "No content"}")
             }
 
@@ -77,21 +78,27 @@ class WebSearchTool(
                 system(
                     "You are a search result summarizer. Extract the key information from this single search result. " +
                         "Keep it concise (2-3 sentences max). " +
-                        "Include the URL. " +
+                        "Do not include or rewrite URLs. " +
                         "Focus on $summarizationFocus. " +
                         "Focus on facts relevant to the search query: ${args.query}"
                 )
                 user(resultText)
             }
 
-            try {
-                log.info { "Summarizing result ${index + 1} for query: '${args.query}'" }
-                val summary = executor.execute(summarizationPrompt, llmModel)
-                summary.toString()
-            } catch (ex: Exception) {
-                log.error(ex) { "Failed to summarize result ${index + 1} for '${args.query}'" }
-                // Fallback to truncated content
-                "Title: ${searchResult.title}\nURL: ${searchResult.url}\nSummary: ${searchResult.content?.take(200)}"
+            val summary =
+                try {
+                    log.info { "Summarizing result ${index + 1} for query: '${args.query}'" }
+                    executor.execute(summarizationPrompt, llmModel).toString()
+                } catch (ex: Exception) {
+                    log.error(ex) { "Failed to summarize result ${index + 1} for '${args.query}'" }
+                    // Fallback to truncated content
+                    searchResult.content?.take(200) ?: "No content"
+                }
+
+            buildString {
+                appendLine("Title: $exactTitle")
+                appendLine("Exact URL: $exactUrl")
+                appendLine("Summary: $summary")
             }
         }
 
@@ -139,13 +146,14 @@ class WebFetchTool(
         val client = httpClient ?: throw IllegalStateException("Web fetch client not configured.")
         val executor = promptExecutor ?: throw IllegalStateException("Prompt executor not configured.")
         val llmModel = model ?: throw IllegalStateException("Model not configured.")
+        val normalizedUrl = normalizeUrl(args.url)
 
-        log.info { "Executing web_fetch for URL: ${args.url}" }
+        log.info { "Executing web_fetch for URL: $normalizedUrl" }
 
         // Fetch the raw web content
         val response =
             client.post("$baseUrl/api/web_fetch") {
-                setBody(WebFetchRequest(url = args.url))
+                setBody(WebFetchRequest(url = normalizedUrl))
             }
 
         if (!response.status.isSuccess()) {
@@ -155,7 +163,7 @@ class WebFetchTool(
         }
 
         val result: WebFetchResponse = response.body()
-        log.info { "web_fetch received content from ${args.url}, title: ${result.title}" }
+        log.info { "web_fetch received content from $normalizedUrl, title: ${result.title}" }
 
         // Create a one-shot summarization prompt
         val summarizationPrompt = prompt("web_page_summarizer") {
@@ -165,7 +173,7 @@ class WebFetchTool(
                     "Include the source URL in your summary."
             )
             user(
-                "URL: ${args.url}\n" +
+                "URL: $normalizedUrl\n" +
                     "Title: ${result.title ?: "Unknown"}\n\n" +
                     "Content:\n${result.content ?: "No content available"}\n\n" +
                     "Please summarize the interesting and relevant facts from this web page."
@@ -174,14 +182,27 @@ class WebFetchTool(
 
         // Execute the one-shot summarization
         return try {
-            log.info { "Summarizing content from ${args.url} with LLM" }
+            log.info { "Summarizing content from $normalizedUrl with LLM" }
             val summary = executor.execute(summarizationPrompt, llmModel)
-            log.info { "Successfully summarized content from ${args.url}" }
+            log.info { "Successfully summarized content from $normalizedUrl" }
             summary.toString()
         } catch (ex: Exception) {
-            log.error(ex) { "Failed to summarize web content from ${args.url}" }
+            log.error(ex) { "Failed to summarize web content from $normalizedUrl" }
             // Fallback to raw content if summarization fails
             json.encodeToString(WebFetchResponse.serializer(), result)
+        }
+    }
+
+    companion object {
+        internal fun normalizeUrl(url: String): String {
+            var normalized = url.trim().removePrefix("<").removeSuffix(">")
+            while (normalized.isNotEmpty() && normalized.last() in listOf('.', ',', ';', ':', ')', ']', '}')) {
+                normalized = normalized.dropLast(1)
+            }
+            if (normalized.endsWith("?") && !normalized.contains("=") && !normalized.contains("&")) {
+                normalized = normalized.dropLast(1)
+            }
+            return normalized
         }
     }
 }
