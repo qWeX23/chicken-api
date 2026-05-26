@@ -70,7 +70,7 @@ class ChickenFactsController(
 
         return CollectionModel.of(facts).apply {
             add(linkTo(methodOn(ChickenFactsController::class.java).getAllChickenFacts()).withSelfRel())
-            add(linkTo(methodOn(ChickenFactsController::class.java).getAgentStatus()).withRel("status"))
+            add(linkTo(ChickenFactsController::class.java).slash("status").withRel("status"))
         }
     }
 

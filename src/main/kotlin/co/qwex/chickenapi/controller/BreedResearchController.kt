@@ -73,7 +73,7 @@ class BreedResearchController(
 
         return CollectionModel.of(research).apply {
             add(linkTo(methodOn(BreedResearchController::class.java).getAllBreedResearch()).withSelfRel())
-            add(linkTo(methodOn(BreedResearchController::class.java).getAgentStatus()).withRel("status"))
+            add(linkTo(BreedResearchController::class.java).slash("status").withRel("status"))
         }
     }
 
@@ -113,7 +113,7 @@ class BreedResearchController(
         return CollectionModel.of(research).apply {
             add(linkTo(methodOn(BreedResearchController::class.java).getBreedResearchHistory(breedId)).withSelfRel())
             add(linkTo(methodOn(BreedResearchController::class.java).getAllBreedResearch()).withRel("all-research"))
-            add(linkTo(methodOn(BreedResearchController::class.java).getAgentStatus()).withRel("status"))
+            add(linkTo(BreedResearchController::class.java).slash("status").withRel("status"))
         }
     }
 
