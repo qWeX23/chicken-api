@@ -111,11 +111,11 @@ fun chickenResearchStrategy(
     val returnResult by node<String, String>("return_result") { _ ->
         if (duplicateFeedback != null && duplicateRetries > maxDuplicateRetries) {
             log.error { "Duplicate retry limit exceeded ($duplicateRetries > $maxDuplicateRetries), failing chicken fact run" }
-            "{}"
+            ""
         } else {
             savedFactJson ?: run {
                 log.warn { "No saved fact found, returning empty result" }
-                "{}"
+                ""
             }
         }
     }
