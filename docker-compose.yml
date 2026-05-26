@@ -1,7 +1,7 @@
 services:
   phoenix:
     container_name: phoenix
-    image: arizephoenix/phoenix:latest
+    image: arizephoenix/phoenix@sha256:83dd4a52a9a5730756e4bc226221f42d338bcaec5fc21e1f38a7fe491fad5428
     restart: unless-stopped
     ports:
       - "${PHOENIX_PORT:-6006}:6006"
@@ -26,6 +26,7 @@ services:
       KOOG_OLLAMA_API_KEY: ${KOOG_OLLAMA_API_KEY:-${KOOG_AGENT_API_KEY:-${OLLAMA_API_KEY:-}}}
       KOOG_AGENT_MODEL: ${KOOG_AGENT_MODEL:-gpt-oss:120b-cloud}
       KOOG_TRACING_PHOENIX_ENABLED: ${KOOG_TRACING_PHOENIX_ENABLED:-true}
+      KOOG_TRACING_PHOENIX_VERBOSE: ${KOOG_TRACING_PHOENIX_VERBOSE:-true}
       PHOENIX_COLLECTOR_ENDPOINT: ${PHOENIX_COLLECTOR_ENDPOINT:-http://phoenix:6006/v1/traces}
       PHOENIX_PROJECT_NAME: ${PHOENIX_PROJECT_NAME:-chicken-api}
     volumes:

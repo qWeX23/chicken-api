@@ -1,18 +1,23 @@
 package co.qwex.chickenapi.ai
 
 import ai.koog.agents.core.agent.entity.AIAgentGraphStrategy
-import ai.koog.agents.core.dsl.builder.forwardTo
+import ai.koog.agents.core.dsl.builder.node
+import ai.koog.agents.core.dsl.builder.subgraph
 import ai.koog.agents.core.dsl.builder.strategy
-import ai.koog.agents.core.dsl.extension.nodeExecuteTool
+import ai.koog.agents.core.dsl.extension.ReceivedToolResults
+import ai.koog.agents.core.dsl.extension.ToolCalls
+import ai.koog.agents.core.dsl.extension.nodeExecuteTools
 import ai.koog.agents.core.dsl.extension.nodeLLMRequest
-import ai.koog.agents.core.dsl.extension.nodeLLMSendToolResult
-import ai.koog.agents.core.dsl.extension.onAssistantMessage
-import ai.koog.agents.core.dsl.extension.onToolCall
-import ai.koog.agents.core.environment.ReceivedToolResult
+import ai.koog.agents.core.dsl.extension.nodeLLMRequestOnlyCallingTools
+import ai.koog.agents.core.dsl.extension.nodeLLMSendToolResults
+import ai.koog.agents.core.dsl.extension.onTextMessage
+import ai.koog.agents.core.dsl.extension.onToolCalls
 import kotlinx.serialization.json.Json
 import mu.KotlinLogging
+import ai.koog.prompt.message.Message
 
 private val log = KotlinLogging.logger {}
+private val json = Json { ignoreUnknownKeys = true }
 
 /**
  * Custom chicken research strategy that enforces:
@@ -24,64 +29,84 @@ fun chickenResearchStrategy(
     maxToolCalls: Int = 4,
     maxDuplicateRetries: Int = 3,
 ): AIAgentGraphStrategy<String, String> = strategy<String, String>("chicken_research") {
-    var toolCalls = 0
+    var toolCallCount = 0
     var duplicateRetries = 0
     var savedFactJson: String? = null
     var duplicateFeedback: String? = null
 
-    val resetToolCounter by node<String, String>("reset_tool_counter") { input ->
-        toolCalls = 0
-        duplicateRetries = 0
-        savedFactJson = null
-        duplicateFeedback = null
-        log.info { "Starting new chicken research run, counters reset" }
-        input
-    }
-
-    val callLLM by nodeLLMRequest(
-        name = "call_llm",
-        allowToolCalls = true,
-    )
-
-    val executeTool by nodeExecuteTool()
-
-    val captureToolResult by node<ReceivedToolResult, ReceivedToolResult>("capture_tool_result") { toolResult ->
-        val result = toolResult.result.toString()
-        val parsedResult = runCatching {
-            json.decodeFromString(SaveChickenFactTool.Result.serializer(), result)
-        }.getOrNull()
-
-        if (parsedResult == null) {
-            toolResult
-        } else {
-            if (parsedResult.duplicateCheck.hasHit) {
-                duplicateRetries += 1
-                duplicateFeedback = json.encodeToString(FactDuplicateCheckResult.serializer(), parsedResult.duplicateCheck)
-                savedFactJson = null
-                log.warn {
-                    "Detected duplicate chicken fact candidate (retry $duplicateRetries/$maxDuplicateRetries), requesting a new fact."
-                }
-            } else {
-                duplicateFeedback = null
-                savedFactJson = json.encodeToString(
-                    SavedChickenFactResult.serializer(),
-                    SavedChickenFactResult(
-                        fact = parsedResult.fact,
-                        sourceUrl = parsedResult.sourceUrl,
-                    ),
-                )
-                log.info { "Captured save_chicken_fact result with no duplicate hit" }
-            }
-            toolResult
+    val setupRun by subgraph<String, String>(name = "setup_run") {
+        val resetToolCounter by node<String, String>("reset_tool_counter") { input ->
+            toolCallCount = 0
+            duplicateRetries = 0
+            savedFactJson = null
+            duplicateFeedback = null
+            log.info { "Starting new chicken research run, counters reset" }
+            input
         }
+
+        edge(nodeStart forwardTo resetToolCounter)
+        edge(resetToolCounter forwardTo nodeFinish transformed { it })
     }
 
-    val sendToolResult by nodeLLMSendToolResult()
+    val llmTurn by subgraph<String, Message.Assistant>(name = "llm_turn") {
+        val callLLM by nodeLLMRequest(name = "call_llm")
 
-    val requestSaveFact by nodeLLMRequest(
-        name = "request_save_fact",
-        allowToolCalls = true,
-    )
+        edge(nodeStart forwardTo callLLM)
+        edge(callLLM forwardTo nodeFinish transformed { it })
+    }
+
+    val executeToolsTurn by subgraph<ToolCalls, ReceivedToolResults>(name = "execute_tools_turn") {
+        val executeTool by nodeExecuteTools(name = "execute_tool")
+
+        edge(nodeStart forwardTo executeTool)
+        edge(executeTool forwardTo nodeFinish transformed { it })
+    }
+
+    val toolResultTurn by subgraph<ReceivedToolResults, Message.Assistant>(name = "summarize_tool_result_turn") {
+        val captureToolResult by node<ReceivedToolResults, ReceivedToolResults>("capture_tool_result") { toolResults ->
+            toolResults.toolResults.forEach { toolResult ->
+                val result = toolResult.result.toString()
+                val parsedResult = runCatching {
+                    json.decodeFromString(SaveChickenFactTool.Result.serializer(), result)
+                }.getOrNull()
+
+                if (parsedResult != null) {
+                    if (parsedResult.duplicateCheck.hasHit) {
+                        duplicateRetries += 1
+                        duplicateFeedback = json.encodeToString(FactDuplicateCheckResult.serializer(), parsedResult.duplicateCheck)
+                        savedFactJson = null
+                        log.warn {
+                            "Detected duplicate chicken fact candidate (retry $duplicateRetries/$maxDuplicateRetries), requesting a new fact."
+                        }
+                    } else {
+                        duplicateFeedback = null
+                        savedFactJson = json.encodeToString(
+                            SavedChickenFactResult.serializer(),
+                            SavedChickenFactResult(
+                                fact = parsedResult.fact,
+                                sourceUrl = parsedResult.sourceUrl,
+                            ),
+                        )
+                        log.info { "Captured save_chicken_fact result with no duplicate hit" }
+                    }
+                }
+            }
+            toolResults
+        }
+
+        val sendToolResult by nodeLLMSendToolResults(name = "summarize_tool_result")
+
+        edge(nodeStart forwardTo captureToolResult)
+        edge(captureToolResult forwardTo sendToolResult)
+        edge(sendToolResult forwardTo nodeFinish transformed { it })
+    }
+
+    val requestSaveFactTurn by subgraph<String, Message.Assistant>(name = "request_save_fact_turn") {
+        val requestSaveFact by nodeLLMRequestOnlyCallingTools(name = "request_save_fact")
+
+        edge(nodeStart forwardTo requestSaveFact)
+        edge(requestSaveFact forwardTo nodeFinish transformed { it })
+    }
 
     val returnResult by node<String, String>("return_result") { _ ->
         if (duplicateFeedback != null && duplicateRetries > maxDuplicateRetries) {
@@ -95,23 +120,31 @@ fun chickenResearchStrategy(
         }
     }
 
-    edge(nodeStart forwardTo resetToolCounter)
-    edge(resetToolCounter forwardTo callLLM)
+    edge(nodeStart forwardTo setupRun)
+    edge(setupRun forwardTo llmTurn)
 
     edge(
-        callLLM forwardTo executeTool onToolCall { _ ->
-            toolCalls++
-            val canCallTool = toolCalls <= maxToolCalls
-            log.info { "Tool call #$toolCalls requested (max: $maxToolCalls), will execute: $canCallTool" }
+        llmTurn forwardTo executeToolsTurn onToolCalls { true } onCondition { pendingToolCalls ->
+            val requestedToolCalls = pendingToolCalls.toolCalls.size
+            val canCallTool = toolCallCount + requestedToolCalls <= maxToolCalls
+            if (canCallTool) {
+                toolCallCount += requestedToolCalls
+            }
+            log.info {
+                "Tool call batch of $requestedToolCalls requested (used: $toolCallCount/$maxToolCalls), will execute: $canCallTool"
+            }
             canCallTool
         },
     )
 
     edge(
-        callLLM forwardTo requestSaveFact onToolCall { _ ->
-            val exceedsMax = toolCalls > maxToolCalls
+        llmTurn forwardTo requestSaveFactTurn onToolCalls { true } onCondition { pendingToolCalls ->
+            val requestedToolCalls = pendingToolCalls.toolCalls.size
+            val exceedsMax = toolCallCount + requestedToolCalls > maxToolCalls
             if (exceedsMax) {
-                log.warn { "Tool call limit exceeded ($toolCalls > $maxToolCalls), forcing save_chicken_fact" }
+                log.warn {
+                    "Tool call limit would be exceeded (${toolCallCount + requestedToolCalls} > $maxToolCalls), forcing save_chicken_fact"
+                }
             }
             exceedsMax
         } transformed {
@@ -127,22 +160,19 @@ fun chickenResearchStrategy(
         },
     )
 
-    edge(
-        callLLM forwardTo returnResult onAssistantMessage { true },
-    )
+    edge(llmTurn forwardTo returnResult onTextMessage { true })
     edge(returnResult forwardTo nodeFinish)
 
-    edge(executeTool forwardTo captureToolResult)
-    edge(captureToolResult forwardTo sendToolResult)
+    edge(executeToolsTurn forwardTo toolResultTurn)
 
     edge(
-        sendToolResult forwardTo returnResult onAssistantMessage {
+        toolResultTurn forwardTo returnResult onTextMessage { true } onCondition { _ ->
             savedFactJson != null || (duplicateFeedback != null && duplicateRetries > maxDuplicateRetries)
-        },
+        } transformed { "" },
     )
 
     edge(
-        sendToolResult forwardTo callLLM onAssistantMessage {
+        toolResultTurn forwardTo llmTurn onTextMessage { true } onCondition { _ ->
             duplicateFeedback != null && duplicateRetries <= maxDuplicateRetries
         } transformed {
             """
@@ -161,19 +191,47 @@ fun chickenResearchStrategy(
     )
 
     edge(
-        sendToolResult forwardTo executeTool onToolCall { _ ->
-            toolCalls++
-            val canCallTool = toolCalls <= maxToolCalls && savedFactJson == null
-            log.info { "Tool call #$toolCalls requested after tool result (max: $maxToolCalls), will execute: $canCallTool" }
+        toolResultTurn forwardTo requestSaveFactTurn onTextMessage { true } onCondition { _ ->
+            savedFactJson == null && duplicateFeedback == null && toolCallCount >= maxToolCalls
+        } transformed {
+            """
+            You have reached the tool call limit. Use the summarized research above and call save_chicken_fact now.
+
+            Call the save_chicken_fact tool with:
+            - fact: A clear, interesting chicken fact based on your research
+            - sourceUrl: The primary source URL that supports the fact
+            """.trimIndent()
+        },
+    )
+
+    edge(
+        toolResultTurn forwardTo executeToolsTurn onToolCalls { true } onCondition { pendingToolCalls ->
+            if (savedFactJson != null || duplicateFeedback != null) {
+                return@onCondition false
+            }
+            val requestedToolCalls = pendingToolCalls.toolCalls.size
+            val canCallTool = toolCallCount + requestedToolCalls <= maxToolCalls
+            if (canCallTool) {
+                toolCallCount += requestedToolCalls
+            }
+            log.info {
+                "Tool call batch of $requestedToolCalls requested after tool result (used: $toolCallCount/$maxToolCalls), will execute: $canCallTool"
+            }
             canCallTool
         },
     )
 
     edge(
-        sendToolResult forwardTo requestSaveFact onToolCall { _ ->
-            val exceedsMax = toolCalls > maxToolCalls && savedFactJson == null
+        toolResultTurn forwardTo requestSaveFactTurn onToolCalls { true } onCondition { pendingToolCalls ->
+            if (savedFactJson != null || duplicateFeedback != null) {
+                return@onCondition false
+            }
+            val requestedToolCalls = pendingToolCalls.toolCalls.size
+            val exceedsMax = toolCallCount + requestedToolCalls > maxToolCalls
             if (exceedsMax) {
-                log.warn { "Tool call limit exceeded after tool result ($toolCalls > $maxToolCalls), forcing save_chicken_fact" }
+                log.warn {
+                    "Tool call limit would be exceeded after tool result (${toolCallCount + requestedToolCalls} > $maxToolCalls), forcing save_chicken_fact"
+                }
             }
             exceedsMax
         } transformed {
@@ -189,16 +247,12 @@ fun chickenResearchStrategy(
         },
     )
 
-    edge(
-        requestSaveFact forwardTo executeTool onToolCall { true },
-    )
+    edge(requestSaveFactTurn forwardTo executeToolsTurn onToolCalls { true })
+    edge(requestSaveFactTurn forwardTo returnResult onTextMessage { true })
 }
-
 
 @kotlinx.serialization.Serializable
 private data class SavedChickenFactResult(
     val fact: String,
     val sourceUrl: String,
 )
-
-private val json = Json { ignoreUnknownKeys = true }

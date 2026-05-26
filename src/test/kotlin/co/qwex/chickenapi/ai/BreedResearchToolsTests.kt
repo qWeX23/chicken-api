@@ -33,7 +33,7 @@ class BreedResearchToolsTests {
         // Run multiple times to verify it picks from never-updated breeds
         repeat(10) {
             val result = runBlocking {
-                tool.doExecute(GetNextBreedToResearchTool.Args(fetch = true))
+                tool.execute(GetNextBreedToResearchTool.Args(fetch = true))
             }
 
             val parsed = json.decodeFromString<GetNextBreedToResearchTool.Result>(result)
@@ -56,7 +56,7 @@ class BreedResearchToolsTests {
 
         val tool = GetNextBreedToResearchTool(mockRepository)
         val result = runBlocking {
-            tool.doExecute(GetNextBreedToResearchTool.Args(fetch = true))
+            tool.execute(GetNextBreedToResearchTool.Args(fetch = true))
         }
 
         val parsed = json.decodeFromString<GetNextBreedToResearchTool.Result>(result)
@@ -75,7 +75,7 @@ class BreedResearchToolsTests {
 
         val tool = GetNextBreedToResearchTool(mockRepository)
         val result = runBlocking {
-            tool.doExecute(GetNextBreedToResearchTool.Args(fetch = true))
+            tool.execute(GetNextBreedToResearchTool.Args(fetch = true))
         }
 
         val parsed = json.decodeFromString<GetNextBreedToResearchTool.Result>(result)
@@ -92,7 +92,7 @@ class BreedResearchToolsTests {
 
         val tool = GetNextBreedToResearchTool(mockRepository)
         val result = runBlocking {
-            tool.doExecute(GetNextBreedToResearchTool.Args(fetch = true))
+            tool.execute(GetNextBreedToResearchTool.Args(fetch = true))
         }
 
         val parsed = json.decodeFromString<GetNextBreedToResearchTool.Result>(result)
@@ -109,7 +109,7 @@ class BreedResearchToolsTests {
 
         val tool = GetNextBreedToResearchTool(mockRepository)
         val result = runBlocking {
-            tool.doExecute(GetNextBreedToResearchTool.Args(fetch = true))
+            tool.execute(GetNextBreedToResearchTool.Args(fetch = true))
         }
 
         val parsed = json.decodeFromString<GetNextBreedToResearchTool.Result>(result)

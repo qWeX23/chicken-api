@@ -1,14 +1,18 @@
 package co.qwex.chickenapi.ai
 
 import ai.koog.agents.core.agent.entity.AIAgentGraphStrategy
-import ai.koog.agents.core.dsl.builder.forwardTo
+import ai.koog.agents.core.dsl.builder.node
+import ai.koog.agents.core.dsl.builder.subgraph
 import ai.koog.agents.core.dsl.builder.strategy
-import ai.koog.agents.core.dsl.extension.nodeExecuteTool
+import ai.koog.agents.core.dsl.extension.ReceivedToolResults
+import ai.koog.agents.core.dsl.extension.ToolCalls
+import ai.koog.agents.core.dsl.extension.nodeExecuteTools
 import ai.koog.agents.core.dsl.extension.nodeLLMRequest
-import ai.koog.agents.core.dsl.extension.nodeLLMSendToolResult
-import ai.koog.agents.core.dsl.extension.onAssistantMessage
-import ai.koog.agents.core.dsl.extension.onToolCall
-import ai.koog.agents.core.environment.ReceivedToolResult
+import ai.koog.agents.core.dsl.extension.nodeLLMRequestOnlyCallingTools
+import ai.koog.agents.core.dsl.extension.nodeLLMSendToolResults
+import ai.koog.agents.core.dsl.extension.onTextMessage
+import ai.koog.agents.core.dsl.extension.onToolCalls
+import ai.koog.prompt.message.Message
 import mu.KotlinLogging
 
 private val log = KotlinLogging.logger {}
@@ -22,47 +26,61 @@ private val log = KotlinLogging.logger {}
 fun breedResearchStrategy(
     maxToolCalls: Int = 8,
 ): AIAgentGraphStrategy<String, String> = strategy<String, String>("breed_research") {
-    // Per-run state (reset at start node)
-    var toolCalls = 0
+    var toolCallCount = 0
     var savedResearchJson: String? = null
 
-    // 1) Reset state on each run
-    val resetState by node<String, String>("reset_state") { input ->
-        toolCalls = 0
-        savedResearchJson = null
-        log.info { "Starting new breed research run, state reset" }
-        input
-    }
-
-    // 2) Main LLM node (can call tools)
-    val callLLM by nodeLLMRequest(
-        name = "call_llm",
-        allowToolCalls = true,
-    )
-
-    // 3) Tool execution
-    val executeTool by nodeExecuteTool()
-
-    // 4) Capture save_breed_research tool result
-    val captureToolResult by node<ReceivedToolResult, ReceivedToolResult>("capture_tool_result") { toolResult ->
-        val result = toolResult.result.toString()
-        if (result.contains("\"success\"") && result.contains("\"breedId\"")) {
-            savedResearchJson = result
-            log.info { "Captured save_breed_research result" }
+    val setupRun by subgraph<String, String>(name = "setup_run") {
+        val resetState by node<String, String>("reset_state") { input ->
+            toolCallCount = 0
+            savedResearchJson = null
+            log.info { "Starting new breed research run, state reset" }
+            input
         }
-        toolResult
+
+        edge(nodeStart forwardTo resetState)
+        edge(resetState forwardTo nodeFinish transformed { it })
     }
 
-    // 5) Send tool result to LLM
-    val sendToolResult by nodeLLMSendToolResult()
+    val llmTurn by subgraph<String, Message.Assistant>(name = "llm_turn") {
+        val callLLM by nodeLLMRequest(name = "call_llm")
 
-    // 6) "Force final answer" node (tells LLM to call save_breed_research)
-    val requestSaveResearch by nodeLLMRequest(
-        name = "request_save_research",
-        allowToolCalls = true,
-    )
+        edge(nodeStart forwardTo callLLM)
+        edge(callLLM forwardTo nodeFinish transformed { it })
+    }
 
-    // 7) Return node (agent finished) - returns captured JSON or empty
+    val executeToolsTurn by subgraph<ToolCalls, ReceivedToolResults>(name = "execute_tools_turn") {
+        val executeTool by nodeExecuteTools(name = "execute_tool")
+
+        edge(nodeStart forwardTo executeTool)
+        edge(executeTool forwardTo nodeFinish transformed { it })
+    }
+
+    val toolResultTurn by subgraph<ReceivedToolResults, Message.Assistant>(name = "summarize_tool_result_turn") {
+        val captureToolResult by node<ReceivedToolResults, ReceivedToolResults>("capture_tool_result") { toolResults ->
+            toolResults.toolResults.forEach { toolResult ->
+                val result = toolResult.result.toString()
+                if (result.contains("\"success\"") && result.contains("\"breedId\"")) {
+                    savedResearchJson = result
+                    log.info { "Captured save_breed_research result" }
+                }
+            }
+            toolResults
+        }
+
+        val sendToolResult by nodeLLMSendToolResults(name = "summarize_tool_result")
+
+        edge(nodeStart forwardTo captureToolResult)
+        edge(captureToolResult forwardTo sendToolResult)
+        edge(sendToolResult forwardTo nodeFinish transformed { it })
+    }
+
+    val requestSaveResearchTurn by subgraph<String, Message.Assistant>(name = "request_save_research_turn") {
+        val requestSaveResearch by nodeLLMRequestOnlyCallingTools(name = "request_save_research")
+
+        edge(nodeStart forwardTo requestSaveResearch)
+        edge(requestSaveResearch forwardTo nodeFinish transformed { it })
+    }
+
     val returnResult by node<String, String>("return_result") { _ ->
         savedResearchJson ?: run {
             log.warn { "No saved research found, returning empty result" }
@@ -70,30 +88,31 @@ fun breedResearchStrategy(
         }
     }
 
-    // ─────────────────────────────
-    // Graph wiring
-    // ─────────────────────────────
+    edge(nodeStart forwardTo setupRun)
+    edge(setupRun forwardTo llmTurn)
 
-    // Start → reset state → first LLM call
-    edge(nodeStart forwardTo resetState)
-    edge(resetState forwardTo callLLM)
-
-    // callLLM: tool call under cap → execute
     edge(
-        callLLM forwardTo executeTool onToolCall { _ ->
-            toolCalls++
-            val canCallTool = toolCalls <= maxToolCalls
-            log.info { "Tool call #$toolCalls requested (max: $maxToolCalls), will execute: $canCallTool" }
+        llmTurn forwardTo executeToolsTurn onToolCalls { true } onCondition { pendingToolCalls ->
+            val requestedToolCalls = pendingToolCalls.toolCalls.size
+            val canCallTool = toolCallCount + requestedToolCalls <= maxToolCalls
+            if (canCallTool) {
+                toolCallCount += requestedToolCalls
+            }
+            log.info {
+                "Tool call batch of $requestedToolCalls requested (used: $toolCallCount/$maxToolCalls), will execute: $canCallTool"
+            }
             canCallTool
         },
     )
 
-    // callLLM: tool call over cap → force save
     edge(
-        callLLM forwardTo requestSaveResearch onToolCall { _ ->
-            val exceedsMax = toolCalls > maxToolCalls
+        llmTurn forwardTo requestSaveResearchTurn onToolCalls { true } onCondition { pendingToolCalls ->
+            val requestedToolCalls = pendingToolCalls.toolCalls.size
+            val exceedsMax = toolCallCount + requestedToolCalls > maxToolCalls
             if (exceedsMax) {
-                log.warn { "Tool call limit exceeded ($toolCalls > $maxToolCalls), forcing save_breed_research" }
+                log.warn {
+                    "Tool call limit would be exceeded (${toolCallCount + requestedToolCalls} > $maxToolCalls), forcing save_breed_research"
+                }
             }
             exceedsMax
         } transformed {
@@ -109,32 +128,43 @@ fun breedResearchStrategy(
         },
     )
 
-    // callLLM: assistant message → done
-    edge(
-        callLLM forwardTo returnResult onAssistantMessage { true },
-    )
+    edge(llmTurn forwardTo returnResult onTextMessage { true })
     edge(returnResult forwardTo nodeFinish)
 
-    // executeTool → captureToolResult → sendToolResult → back to LLM
-    edge(executeTool forwardTo captureToolResult)
-    edge(captureToolResult forwardTo sendToolResult)
+    edge(executeToolsTurn forwardTo toolResultTurn)
 
-    // sendToolResult: tool call under cap → execute (loop)
     edge(
-        sendToolResult forwardTo executeTool onToolCall { _ ->
-            toolCalls++
-            val canCallTool = toolCalls <= maxToolCalls
-            log.info { "Tool call #$toolCalls requested after tool result (max: $maxToolCalls), will execute: $canCallTool" }
+        toolResultTurn forwardTo returnResult onCondition { _ -> savedResearchJson != null } transformed { "" },
+    )
+
+    edge(
+        toolResultTurn forwardTo executeToolsTurn onToolCalls { true } onCondition { pendingToolCalls ->
+            if (savedResearchJson != null) {
+                return@onCondition false
+            }
+            val requestedToolCalls = pendingToolCalls.toolCalls.size
+            val canCallTool = toolCallCount + requestedToolCalls <= maxToolCalls
+            if (canCallTool) {
+                toolCallCount += requestedToolCalls
+            }
+            log.info {
+                "Tool call batch of $requestedToolCalls requested after tool result (used: $toolCallCount/$maxToolCalls), will execute: $canCallTool"
+            }
             canCallTool
         },
     )
 
-    // sendToolResult: tool call over cap → force save
     edge(
-        sendToolResult forwardTo requestSaveResearch onToolCall { _ ->
-            val exceedsMax = toolCalls > maxToolCalls
+        toolResultTurn forwardTo requestSaveResearchTurn onToolCalls { true } onCondition { pendingToolCalls ->
+            if (savedResearchJson != null) {
+                return@onCondition false
+            }
+            val requestedToolCalls = pendingToolCalls.toolCalls.size
+            val exceedsMax = toolCallCount + requestedToolCalls > maxToolCalls
             if (exceedsMax) {
-                log.warn { "Tool call limit exceeded after tool result ($toolCalls > $maxToolCalls), forcing save_breed_research" }
+                log.warn {
+                    "Tool call limit would be exceeded after tool result (${toolCallCount + requestedToolCalls} > $maxToolCalls), forcing save_breed_research"
+                }
             }
             exceedsMax
         } transformed {
@@ -150,18 +180,8 @@ fun breedResearchStrategy(
         },
     )
 
-    // sendToolResult: assistant message → done
-    edge(
-        sendToolResult forwardTo returnResult onAssistantMessage { true },
-    )
+    edge(toolResultTurn forwardTo returnResult onTextMessage { true })
 
-    // requestSaveResearch → execute it
-    edge(
-        requestSaveResearch forwardTo executeTool onToolCall { true },
-    )
-
-    // requestSaveResearch: if LLM gives assistant message instead → done
-    edge(
-        requestSaveResearch forwardTo returnResult onAssistantMessage { true },
-    )
+    edge(requestSaveResearchTurn forwardTo executeToolsTurn onToolCalls { true })
+    edge(requestSaveResearchTurn forwardTo returnResult onTextMessage { true })
 }

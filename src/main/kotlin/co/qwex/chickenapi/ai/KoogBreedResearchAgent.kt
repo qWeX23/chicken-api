@@ -1,14 +1,13 @@
 package co.qwex.chickenapi.ai
 
-import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
 import ai.koog.agents.core.tools.ToolRegistry
-import ai.koog.agents.features.tracing.feature.Tracing
 import ai.koog.agents.features.opentelemetry.feature.OpenTelemetry
+import ai.koog.agents.features.tracing.feature.Tracing
 import ai.koog.agents.features.tracing.writer.TraceFeatureMessageLogWriter
+import ai.koog.http.client.ktor.KtorKoogHttpClient
 import ai.koog.prompt.dsl.prompt
-import ai.koog.prompt.executor.llms.SingleLLMPromptExecutor
-import ai.koog.prompt.executor.ollama.client.OllamaClient
+import ai.koog.prompt.executor.llms.all.simpleOllamaAIExecutor
 import ai.koog.prompt.llm.LLMCapability
 import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
@@ -22,12 +21,11 @@ import co.qwex.chickenapi.config.KoogOllamaProperties
 import co.qwex.chickenapi.config.PhoenixTracingProperties
 import co.qwex.chickenapi.repository.BreedRepository
 import io.github.oshai.kotlinlogging.KotlinLogging as OshaiKotlinLogging
-import io.ktor.client.HttpClient
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
-import mu.KotlinLogging
-import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter
+import io.ktor.client.HttpClient
+import mu.KotlinLogging
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
@@ -43,7 +41,7 @@ class KoogBreedResearchAgent(
     private val ollamaProperties: KoogOllamaProperties,
     private val phoenixTracingProperties: PhoenixTracingProperties,
     private val phoenixSpanExporterProvider: ObjectProvider<OtlpHttpSpanExporter>,
-    private val phoenixResourceAttributesProvider: ObjectProvider<Map<AttributeKey<String>, String>>,
+    private val phoenixResourceAttributesProvider: ObjectProvider<Map<String, Any>>,
     private val breedRepository: BreedRepository,
     @Qualifier("koogBreedResearchHttpClient")
     private val httpClientProvider: ObjectProvider<HttpClient>,
@@ -64,11 +62,9 @@ class KoogBreedResearchAgent(
         val llmHttpClient = httpClientProvider.getIfAvailable() ?: return
         val webToolClient = llmHttpClient
         val promptExecutor =
-            SingleLLMPromptExecutor(
-                OllamaClient(
-                    baseUrl = sanitizedBaseUrl,
-                    baseClient = llmHttpClient,
-                ),
+            simpleOllamaAIExecutor(
+                baseUrl = sanitizedBaseUrl,
+                httpClientFactory = KtorKoogHttpClient.Factory(llmHttpClient),
             )
 
         val model =
@@ -91,17 +87,11 @@ class KoogBreedResearchAgent(
                 httpClient = webToolClient,
                 baseUrl = sanitizedWebToolsBaseUrl,
                 defaultMaxResults = properties.webSearchMaxResults,
-                promptExecutor = promptExecutor,
-                model = model,
-                summarizationFocus = "breed-specific facts, characteristics, history, temperament, and egg production details",
             )
         val webFetchTool =
             WebFetchTool(
                 httpClient = webToolClient,
                 baseUrl = sanitizedWebToolsBaseUrl,
-                promptExecutor = promptExecutor,
-                model = model,
-                summarizationFocus = "breed-specific characteristics, history, temperament, egg production, and unique traits",
             )
         val saveBreedResearchTool = SaveBreedResearchTool(breedRepository)
 
@@ -144,7 +134,7 @@ class KoogBreedResearchAgent(
         return try {
             log.info { "Creating new agent instance for breed research" }
             val agent =
-                AIAgent(
+                ai.koog.agents.core.agent.AIAgent(
                     promptExecutor = activeRuntime.promptExecutor,
                     strategy = breedResearchStrategy(
                         maxToolCalls = properties.maxToolCalls,
@@ -164,10 +154,11 @@ class KoogBreedResearchAgent(
                                     phoenixTracingProperties.serviceName,
                                     phoenixTracingProperties.serviceVersion,
                                 )
+                                setVerbose(phoenixTracingProperties.verbose)
                                 addSpanExporter(phoenixSpanExporter)
                                 addResourceAttributes(
                                     phoenixResourceAttributes +
-                                        mapOf(AttributeKey.stringKey("llm.application") to "breed-research-agent"),
+                                        mapOf("llm.application" to "breed-research-agent"),
                                 )
                             }
                         }
@@ -182,6 +173,7 @@ class KoogBreedResearchAgent(
 
     @PreDestroy
     fun shutdown() {
+        runtime?.promptExecutor?.close()
         runtime?.toolsHttpClient?.close()
         runtime?.ollamaHttpClient?.close()
     }
@@ -197,6 +189,7 @@ class KoogBreedResearchAgent(
             3. Use `web_search` and `web_fetch` to research the breed (up to 8 tool calls total)
             4. Call `save_breed_research` with your findings
             5. When using a URL from `web_search`, copy the `Exact URL` value verbatim into `web_fetch`
+            6. `web_search` and `web_fetch` return raw snippets; summarize breed-specific facts from those results in your next visible reasoning step before choosing another tool or saving.
 
             ## Research Focus
 

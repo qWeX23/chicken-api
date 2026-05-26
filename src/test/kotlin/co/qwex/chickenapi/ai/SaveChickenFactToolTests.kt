@@ -35,7 +35,7 @@ class SaveChickenFactToolTests {
         )
 
         val resultJson = runBlocking {
-            tool.doExecute(
+            tool.execute(
                 SaveChickenFactTool.Args(
                     fact = "Chickens can remember over 100 faces.",
                     sourceUrl = "https://example.com/new",
@@ -67,7 +67,7 @@ class SaveChickenFactToolTests {
         )
 
         val resultJson = runBlocking {
-            tool.doExecute(
+            tool.execute(
                 SaveChickenFactTool.Args(
                     fact = "Hens often communicate with their chicks before they hatch.",
                     sourceUrl = "https://example.com/chicks",

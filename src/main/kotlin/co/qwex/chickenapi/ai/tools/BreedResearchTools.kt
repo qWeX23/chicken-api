@@ -2,6 +2,7 @@ package co.qwex.chickenapi.ai.tools
 
 import ai.koog.agents.core.tools.SimpleTool
 import ai.koog.agents.core.tools.annotations.LLMDescription
+import ai.koog.serialization.typeToken
 import co.qwex.chickenapi.model.Breed
 import co.qwex.chickenapi.repository.BreedRepository
 import kotlinx.serialization.Serializable
@@ -18,7 +19,11 @@ private val json = Json { prettyPrint = true }
  */
 class GetNextBreedToResearchTool(
     private val breedRepository: BreedRepository,
-) : SimpleTool<GetNextBreedToResearchTool.Args>() {
+) : SimpleTool<GetNextBreedToResearchTool.Args>(
+        argsType = typeToken<Args>(),
+        name = "get_next_breed_to_research",
+        description = "Retrieves the next chicken breed that needs research.",
+    ) {
 
     @Serializable
     data class Args(
@@ -34,16 +39,7 @@ class GetNextBreedToResearchTool(
         val reason: String,
     )
 
-    override val argsSerializer = Args.serializer()
-    override val name = "get_next_breed_to_research"
-    override val description = """
-        Retrieves the next chicken breed that needs research.
-        Prioritizes breeds that have never been researched (null updatedAt).
-        If all breeds have been researched, selects the one with the oldest update timestamp.
-        Returns the breed ID, name, last update time, and selection reason.
-    """.trimIndent()
-
-    override suspend fun doExecute(args: Args): String {
+    override suspend fun execute(args: Args): String {
         log.info { "Fetching next breed to research" }
 
         val allBreeds = breedRepository.getAllBreeds()
@@ -91,7 +87,11 @@ class GetNextBreedToResearchTool(
  */
 class GetBreedDetailsTool(
     private val breedRepository: BreedRepository,
-) : SimpleTool<GetBreedDetailsTool.Args>() {
+) : SimpleTool<GetBreedDetailsTool.Args>(
+        argsType = typeToken<Args>(),
+        name = "get_breed_details",
+        description = "Fetches the current information for a specific chicken breed by ID.",
+    ) {
 
     @Serializable
     data class Args(
@@ -112,16 +112,7 @@ class GetBreedDetailsTool(
         val currentSources: List<String>,
     )
 
-    override val argsSerializer = Args.serializer()
-    override val name = "get_breed_details"
-    override val description = """
-        Fetches the current information for a specific chicken breed by ID.
-        Returns all known details including origin, egg characteristics, temperament,
-        description, and any existing source URLs.
-        Use this to understand what information we already have before researching.
-    """.trimIndent()
-
-    override suspend fun doExecute(args: Args): String {
+    override suspend fun execute(args: Args): String {
         log.info { "Fetching details for breed ID: ${args.breedId}" }
 
         val breed = breedRepository.getBreedById(args.breedId)
@@ -154,7 +145,11 @@ class GetBreedDetailsTool(
  */
 class SaveBreedResearchTool(
     private val breedRepository: BreedRepository,
-) : SimpleTool<SaveBreedResearchTool.Args>() {
+) : SimpleTool<SaveBreedResearchTool.Args>(
+        argsType = typeToken<Args>(),
+        name = "save_breed_research",
+        description = "Saves the research findings for a chicken breed to the database.",
+    ) {
 
     @Serializable
     data class Args(
@@ -210,25 +205,7 @@ class SaveBreedResearchTool(
         val sources: List<String>,
     )
 
-    override val argsSerializer = Args.serializer()
-    override val name = "save_breed_research"
-    override val description = """
-        Saves the research findings for a chicken breed to the database.
-        Call this tool after researching the breed with web_search and web_fetch.
-
-        Required:
-        - description: A compelling 2-3 sentence summary of what makes this breed unique
-        - sources: At least one URL you used for research
-
-        Optional (provide if you found verified information):
-        - origin: Country or region of origin
-        - eggColor: Color of eggs (Brown, White, Blue, etc.)
-        - eggSize: Small, Medium, Large, or Extra-Large
-        - temperament: Brief personality description
-        - numEggs: Average annual egg production
-    """.trimIndent()
-
-    override suspend fun doExecute(args: Args): String {
+    override suspend fun execute(args: Args): String {
         log.info { "Saving breed research for breed ID: ${args.breedId}" }
         log.info { "Description length: ${args.description.length} chars, Sources: ${args.sources.size}" }
 

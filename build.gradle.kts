@@ -1,7 +1,7 @@
 plugins {
-    kotlin("jvm") version "2.1.10"
-    kotlin("plugin.spring") version "2.1.10"
-    kotlin("plugin.serialization") version "2.1.10"
+    kotlin("jvm") version "2.3.10"
+    kotlin("plugin.spring") version "2.3.10"
+    kotlin("plugin.serialization") version "2.3.10"
     id("org.springframework.boot") version "3.4.5"
     id("io.spring.dependency-management") version "1.1.7"
     id("com.diffplug.spotless") version "6.25.0"
@@ -26,32 +26,38 @@ repositories {
     mavenCentral()
 }
 
-val serializationVersion = "1.8.1"
+val koogVersion = "1.0.0"
+val koogBetaVersion = "1.0.0-beta"
+val opentelemetryVersion = "1.61.0"
+val ktorVersion = "3.3.3"
+val okioVersion = "3.17.0"
+val serializationVersion = "1.10.0"
+val coroutinesVersion = "1.10.2"
 
 configurations.all {
     resolutionStrategy.eachDependency {
-        if (requested.group == "org.jetbrains.kotlinx" && requested.name.startsWith("kotlinx-coroutines")) {
-            useVersion("1.9.0")
-            because("Koog agents require CoroutineDispatcher.limitedParallelism which ships in coroutines 1.9")
-        } else if (requested.group == "org.jetbrains.kotlinx" && requested.name.startsWith("kotlinx-serialization")) {
-            useVersion(serializationVersion)
-            because("Koog agents are built against kotlinx-serialization 1.8.x")
+        when {
+            requested.group == "io.opentelemetry" -> useVersion(opentelemetryVersion)
+            requested.group == "org.jetbrains.kotlinx" && requested.name.startsWith("kotlinx-serialization") ->
+                useVersion(serializationVersion)
+            requested.group == "com.squareup.okio" && requested.name.startsWith("okio") -> useVersion(okioVersion)
         }
     }
 }
 
 dependencies {
-    implementation(platform("io.opentelemetry:opentelemetry-bom:1.43.0"))
-    implementation("ai.koog:koog-agents:0.5.2")
-    implementation("ai.koog:agents-features-opentelemetry:0.5.2")
-    implementation("com.squareup.okio:okio:3.9.0")
+    implementation(platform("io.opentelemetry:opentelemetry-bom:$opentelemetryVersion"))
+    implementation("ai.koog:koog-agents:$koogVersion")
+    implementation("ai.koog:agents-features-opentelemetry:$koogVersion")
+    implementation("ai.koog:http-client-ktor:$koogVersion")
+    implementation("ai.koog:prompt-executor-llms-all:$koogBetaVersion")
     implementation("io.opentelemetry:opentelemetry-exporter-otlp")
     implementation("io.opentelemetry:opentelemetry-exporter-sender-okhttp")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:$serializationVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:$serializationVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
-    implementation("io.ktor:ktor-client-cio:3.3.0")
-    implementation("io.ktor:ktor-client-content-negotiation:3.3.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
+    implementation("io.ktor:ktor-client-cio:$ktorVersion")
+    implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-web")
@@ -64,6 +70,7 @@ dependencies {
     implementation("com.google.auth:google-auth-library-oauth2-http:1.19.0")
     implementation("com.google.http-client:google-http-client-jackson2:1.43.3")
     implementation("io.github.microutils:kotlin-logging-jvm:3.0.5")
+    implementation("io.github.oshai:kotlin-logging-jvm:8.0.01")
     implementation("net.logstash.logback:logstash-logback-encoder:7.4")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.8")
     implementation("org.apache.commons:commons-text:1.10.0")

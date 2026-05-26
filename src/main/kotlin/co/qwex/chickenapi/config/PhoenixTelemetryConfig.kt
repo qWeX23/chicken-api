@@ -1,6 +1,5 @@
 package co.qwex.chickenapi.config
 
-import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
@@ -17,9 +16,9 @@ class PhoenixTelemetryConfig {
             .build()
 
     @Bean
-    fun phoenixResourceAttributes(properties: PhoenixTracingProperties): Map<AttributeKey<String>, String> =
+    fun phoenixResourceAttributes(properties: PhoenixTracingProperties): Map<String, Any> =
         mapOf(
-            AttributeKey.stringKey("deployment.environment") to properties.deploymentEnvironment,
-            AttributeKey.stringKey("openinference.project.name") to properties.projectName,
+            "deployment.environment" to properties.deploymentEnvironment,
+            "openinference.project.name" to properties.projectName,
         )
 }

@@ -1,6 +1,5 @@
 package co.qwex.chickenapi.ai
 
-import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
 import ai.koog.agents.core.tools.SimpleTool
 import ai.koog.agents.core.tools.ToolRegistry
@@ -8,19 +7,19 @@ import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.agents.features.opentelemetry.feature.OpenTelemetry
 import ai.koog.agents.features.tracing.feature.Tracing
 import ai.koog.agents.features.tracing.writer.TraceFeatureMessageLogWriter
+import ai.koog.http.client.ktor.KtorKoogHttpClient
 import ai.koog.prompt.dsl.prompt
-import ai.koog.prompt.executor.llms.SingleLLMPromptExecutor
-import ai.koog.prompt.executor.ollama.client.OllamaClient
+import ai.koog.prompt.executor.llms.all.simpleOllamaAIExecutor
 import ai.koog.prompt.llm.LLMCapability
 import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
+import ai.koog.serialization.typeToken
 import co.qwex.chickenapi.ai.tools.WebFetchTool
 import co.qwex.chickenapi.ai.tools.WebSearchTool
 import co.qwex.chickenapi.config.KoogAgentProperties
 import co.qwex.chickenapi.config.KoogOllamaProperties
 import co.qwex.chickenapi.config.PhoenixTracingProperties
 import io.github.oshai.kotlinlogging.KotlinLogging as OshaiKotlinLogging
-import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter
 import io.ktor.client.HttpClient
 import jakarta.annotation.PostConstruct
@@ -42,7 +41,7 @@ class KoogChickenFactsAgent(
     private val ollamaProperties: KoogOllamaProperties,
     private val phoenixTracingProperties: PhoenixTracingProperties,
     private val phoenixSpanExporterProvider: ObjectProvider<OtlpHttpSpanExporter>,
-    private val phoenixResourceAttributesProvider: ObjectProvider<Map<AttributeKey<String>, String>>,
+    private val phoenixResourceAttributesProvider: ObjectProvider<Map<String, Any>>,
     private val chickenFactDuplicateCheckService: ChickenFactDuplicateCheckService,
     @Qualifier("koogChickenFactsHttpClient")
     private val httpClientProvider: ObjectProvider<HttpClient>,
@@ -63,11 +62,9 @@ class KoogChickenFactsAgent(
         val llmHttpClient = httpClientProvider.getIfAvailable() ?: return
         val webToolClient = llmHttpClient
         val promptExecutor =
-            SingleLLMPromptExecutor(
-                OllamaClient(
-                    baseUrl = sanitizedBaseUrl,
-                    baseClient = llmHttpClient,
-                ),
+            simpleOllamaAIExecutor(
+                baseUrl = sanitizedBaseUrl,
+                httpClientFactory = KtorKoogHttpClient.Factory(llmHttpClient),
             )
 
         val model =
@@ -88,15 +85,11 @@ class KoogChickenFactsAgent(
                 httpClient = webToolClient,
                 baseUrl = sanitizedWebToolsBaseUrl,
                 defaultMaxResults = properties.webSearchMaxResults,
-                promptExecutor = promptExecutor,
-                model = model,
             )
         val webFetchTool =
             WebFetchTool(
                 httpClient = webToolClient,
                 baseUrl = sanitizedWebToolsBaseUrl,
-                promptExecutor = promptExecutor,
-                model = model,
             )
 
         val toolRegistry =
@@ -116,6 +109,7 @@ class KoogChickenFactsAgent(
 - When you need new information, call the web_search tool.
 - Optionally use web_fetch to pull supporting content for specific URLs.
 - When using a URL from web_search, copy the `Exact URL` value verbatim into web_fetch.
+- web_search and web_fetch return raw snippets; summarize the relevant facts in your next visible reasoning step before choosing another tool or saving.
 - You may call at most 3 tools total (any combination of web_search and web_fetch).
 - Focus on finding interesting tidbits, amusing behaviors, historical stories, or surprising facts rather than scientific papers or academic research.
 - Look for sources like blogs, fun fact websites, farming communities, chicken keeper forums, and general interest articles.
@@ -153,12 +147,9 @@ class KoogChickenFactsAgent(
         return try {
             log.info { "Creating new agent instance for chicken facts fetch" }
             val agent =
-                AIAgent(
+                ai.koog.agents.core.agent.AIAgent(
                     promptExecutor = activeRuntime.promptExecutor,
-                    strategy = chickenResearchStrategy(
-                        maxToolCalls = 4,
-                        maxDuplicateRetries = 3,
-                    ),
+                    strategy = chickenResearchStrategy(maxToolCalls = 4, maxDuplicateRetries = 3),
                     toolRegistry = activeRuntime.toolRegistry,
                     agentConfig = activeRuntime.agentConfig,
                 ) {
@@ -214,10 +205,11 @@ class KoogChickenFactsAgent(
                                     phoenixTracingProperties.serviceName,
                                     phoenixTracingProperties.serviceVersion,
                                 )
+                                setVerbose(phoenixTracingProperties.verbose)
                                 addSpanExporter(phoenixSpanExporter)
                                 addResourceAttributes(
                                     phoenixResourceAttributes +
-                                        mapOf(AttributeKey.stringKey("llm.application") to "chicken-facts-agent"),
+                                        mapOf("llm.application" to "chicken-facts-agent"),
                                 )
                             }
                         }
@@ -232,6 +224,7 @@ class KoogChickenFactsAgent(
 
     @PreDestroy
     fun shutdown() {
+        runtime?.promptExecutor?.close()
         runtime?.toolsHttpClient?.close()
         runtime?.ollamaHttpClient?.close()
     }
@@ -243,7 +236,11 @@ class KoogChickenFactsAgent(
  */
 class SaveChickenFactTool(
     private val duplicateCheckService: ChickenFactDuplicateCheckService,
-) : SimpleTool<SaveChickenFactTool.Args>() {
+) : SimpleTool<SaveChickenFactTool.Args>(
+        argsType = typeToken<Args>(),
+        name = "save_chicken_fact",
+        description = "Saves a chicken fact with its source URL after running a duplicate check.",
+    ) {
     private val log = KotlinLogging.logger {}
 
     @Serializable
@@ -261,11 +258,7 @@ class SaveChickenFactTool(
         val duplicateCheck: FactDuplicateCheckResult,
     )
 
-    override val argsSerializer = Args.serializer()
-    override val name = "save_chicken_fact"
-    override val description = "Saves a chicken fact with its source URL. This should be called once you have found a good chicken fact from your research. Returns a confirmation message."
-
-    override suspend fun doExecute(args: Args): String {
+    override suspend fun execute(args: Args): String {
         log.info { "Saving chicken fact with URL: ${args.sourceUrl}" }
         val duplicateCheck = duplicateCheckService.checkFactForDuplicate(args.fact)
         return jsonCodec.encodeToString(

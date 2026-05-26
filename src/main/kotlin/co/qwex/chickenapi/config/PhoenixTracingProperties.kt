@@ -13,4 +13,5 @@ data class PhoenixTracingProperties(
     val serviceName: String = "chicken-api-agents",
     val serviceVersion: String = "0.0.1",
     val deploymentEnvironment: String = "local",
+    val verbose: Boolean = false,
 )
