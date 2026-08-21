@@ -18,6 +18,9 @@ interface BreedResearchRepository : DataRepository<BreedResearchRecord, String> 
      */
     fun fetchAllSuccessfulResearch(): List<BreedResearchRecord>
 
+    /** Returns the most recently completed run, regardless of outcome. */
+    fun fetchLatestRun(): BreedResearchRecord?
+
     override fun findAll(): List<BreedResearchRecord> = fetchAllSuccessfulResearch()
 
     override fun findById(id: String): BreedResearchRecord? {

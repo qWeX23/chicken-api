@@ -1,8 +1,10 @@
 package co.qwex.chickenapi.ai
 
 import co.qwex.chickenapi.config.KoogOllamaProperties
+import co.qwex.chickenapi.config.WebToolsProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.header
@@ -11,9 +13,10 @@ import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import org.springframework.beans.factory.annotation.Qualifier
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import java.time.Duration
 
 @Configuration
 class KoogHttpClientConfiguration {
@@ -21,49 +24,72 @@ class KoogHttpClientConfiguration {
 
     @Bean
     @Qualifier("koogChickenFactsHttpClient")
-    @ConditionalOnExpression(
-        "\${koog.agent.enabled:true} && '\${koog.ollama.api-key:}' != ''",
-    )
+    @ConditionalOnProperty(name = ["koog.agent.enabled"], havingValue = "true", matchIfMissing = true)
     fun koogChickenFactsHttpClient(properties: KoogOllamaProperties): HttpClient =
-        createAuthorizedClient(
-            apiKey = properties.apiKey.orEmpty(),
-            extraHeaders = properties.extraHeaders,
+        createClient(
+            apiKey = properties.resolvedGenerationApiKey,
+            extraHeaders = properties.extraHeaders.takeIf { properties.generationUsesOllamaCloud }.orEmpty(),
+            requestTimeout = properties.llmRequestTimeout,
         )
 
     @Bean
+    @Qualifier("koogChickenFactsWebToolsHttpClient")
+    @ConditionalOnProperty(name = ["koog.agent.enabled"], havingValue = "true", matchIfMissing = true)
+    fun koogChickenFactsWebToolsHttpClient(properties: KoogOllamaProperties): HttpClient =
+        createWebToolsClient(properties)
+
+    @Bean
     @Qualifier("koogBreedResearchHttpClient")
-    @ConditionalOnExpression(
-        "\${koog.breed-research-agent.enabled:true} && '\${koog.ollama.api-key:}' != ''",
-    )
+    @ConditionalOnProperty(name = ["koog.breed-research-agent.enabled"], havingValue = "true", matchIfMissing = true)
     fun koogBreedResearchHttpClient(
         ollamaProperties: KoogOllamaProperties,
     ): HttpClient =
-        createAuthorizedClient(
-            apiKey = ollamaProperties.apiKey.orEmpty(),
-            extraHeaders = ollamaProperties.extraHeaders,
+        createClient(
+            apiKey = ollamaProperties.resolvedGenerationApiKey,
+            extraHeaders = ollamaProperties.extraHeaders.takeIf { ollamaProperties.generationUsesOllamaCloud }.orEmpty(),
+            requestTimeout = ollamaProperties.llmRequestTimeout,
         )
 
-    private fun createAuthorizedClient(
-        apiKey: String,
+    @Bean
+    @Qualifier("koogBreedResearchWebToolsHttpClient")
+    @ConditionalOnProperty(name = ["koog.breed-research-agent.enabled"], havingValue = "true", matchIfMissing = true)
+    fun koogBreedResearchWebToolsHttpClient(properties: KoogOllamaProperties): HttpClient =
+        createWebToolsClient(properties)
+
+    private fun createWebToolsClient(properties: KoogOllamaProperties): HttpClient {
+        val hostedOllama =
+            properties.webToolsProvider == WebToolsProvider.OLLAMA && properties.webToolsUseOllamaCloud
+        return createClient(
+            apiKey = properties.resolvedWebToolsApiKey.takeIf { hostedOllama },
+            extraHeaders = properties.extraHeaders.takeIf { hostedOllama }.orEmpty(),
+            requestTimeout = properties.webToolsRequestTimeout,
+        )
+    }
+
+    private fun createClient(
+        apiKey: String?,
         extraHeaders: Map<String, String>,
+        requestTimeout: Duration,
     ): HttpClient =
         HttpClient(CIO) {
             defaultRequest {
                 val authorizationValue =
-                    apiKey.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
+                    apiKey?.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
                 val normalizedExtraHeaders = extraHeaders.filter { (key, value) ->
                     key.isNotBlank() && value.isNotBlank()
                 }
-                val hasAuthorizationHeader = normalizedExtraHeaders.keys.any { key ->
-                    key.equals("Authorization", ignoreCase = true)
-                }
-                if (authorizationValue != null && !hasAuthorizationHeader) {
+                if (authorizationValue != null) {
                     header("Authorization", authorizationValue)
                 }
                 normalizedExtraHeaders
-                    .filterNot { (key) -> key.equals("Authorization", ignoreCase = true) && authorizationValue != null }
+                    .filterNot { (key) -> authorizationValue != null && key.equals("Authorization", ignoreCase = true) }
                     .forEach { (key, value) -> header(key, value) }
                 contentType(ContentType.Application.Json)
+            }
+            install(HttpTimeout) {
+                requestTimeoutMillis = requestTimeout.toMillis()
+                connectTimeoutMillis = 10_000
+                socketTimeoutMillis = requestTimeout.toMillis()
             }
             install(ContentNegotiation) {
                 json(json)

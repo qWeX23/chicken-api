@@ -2,19 +2,21 @@ package co.qwex.chickenapi.service
 
 import co.qwex.chickenapi.ai.KoogChickenFactsAgent
 import co.qwex.chickenapi.ai.OllamaEmbeddingService
+import co.qwex.chickenapi.config.KoogAgentProperties
 import co.qwex.chickenapi.model.AgentRunOutcome
 import co.qwex.chickenapi.model.ChickenFactsRecord
 import co.qwex.chickenapi.repository.ChickenFactsRepository
+import jakarta.annotation.PostConstruct
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import mu.KotlinLogging
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import java.time.Duration
 import java.time.Instant
-import java.time.LocalDateTime
 import java.util.UUID
 
 @Serializable
@@ -24,112 +26,195 @@ data class ChickenFactJson(
 )
 
 @Service
-@ConditionalOnProperty(
-    name = ["koog.agent.scheduler.enabled"],
-    havingValue = "true",
-    matchIfMissing = true,
-)
 class ChickenFactResearcherScheduledTaskService(
     private val koogChickenFactsAgent: KoogChickenFactsAgent,
     private val ollamaEmbeddingService: OllamaEmbeddingService,
     private val chickenFactsRepository: ChickenFactsRepository,
+    private val properties: KoogAgentProperties,
+    scheduledTaskMetrics: ScheduledTaskMetrics,
 ) {
 
     private val log = KotlinLogging.logger {}
     private val json = Json { ignoreUnknownKeys = true }
+    private val taskMonitor = scheduledTaskMetrics.register(TASK_NAME, properties.scheduler.timeout)
 
-    @Scheduled(fixedRateString = "\${koog.agent.scheduler.fixed-rate:PT5H}") // Default: every 5 hours
+    @PostConstruct
+    fun initializeMetrics() {
+        refreshConfigurationMetrics()
+        runCatching {
+            val latestRun = chickenFactsRepository.fetchLatestRun()
+            val latestSuccess = chickenFactsRepository.fetchLatestChickenFact()
+            taskMonitor.restore(
+                latestRunStartedAt = latestRun?.startedAt,
+                latestRunCompletedAt = latestRun?.completedAt,
+                latestRunDurationMillis = latestRun?.durationMillis,
+                latestRunOutcome = latestRun?.outcome,
+                latestSuccessAt = latestSuccess?.completedAt,
+            )
+            taskMonitor.setHistoryLoaded(true)
+        }.onFailure { ex ->
+            log.warn(ex) { "Unable to restore $TASK_NAME metrics from Google Sheets" }
+        }
+        log.info {
+            "$TASK_NAME configured: enabled=${isEnabled()}, cron='${properties.scheduler.cron}', zone=${properties.scheduler.zone}, timeout=${properties.scheduler.timeout}"
+        }
+    }
+
+    @Scheduled(
+        cron = "\${koog.agent.scheduler.cron:0 15 4 * * *}",
+        zone = "\${koog.agent.scheduler.zone:America/Chicago}",
+    )
     fun runDailyChickenFactResearcherTask() {
-        log.info { "Chicken Fact Researcher scheduled task started at: ${LocalDateTime.now()}" }
+        refreshConfigurationMetrics()
+        if (!isEnabled()) {
+            log.warn { "$TASK_NAME is disabled; scheduled invocation skipped" }
+            return
+        }
+
+        val startedAt = Instant.now()
         if (!koogChickenFactsAgent.isReady()) {
-            log.info { "Koog agent is not ready, skipping run." }
+            log.error { "$TASK_NAME dependencies are not ready; scheduled invocation skipped" }
+            persistNotReadyRun(startedAt)
+            return
+        }
+
+        if (!taskMonitor.tryStart(startedAt)) {
+            log.warn { "$TASK_NAME is already running; overlapping invocation skipped" }
             return
         }
 
         val runId = UUID.randomUUID().toString()
-        val startedAt = Instant.now()
+        log.info { "$TASK_NAME run $runId started" }
 
-        var failureReason: String? = null
-        val response = try {
+        val execution = try {
             runBlocking {
-                koogChickenFactsAgent.fetchChickenFacts()
-            }
-        } catch (ex: Exception) {
-            failureReason = ex.message
-            log.error(ex) { "Koog agent invocation threw an exception" }
-            null
-        }
-
-        val completedAt = Instant.now()
-
-        // Parse JSON output from agent
-        var fact: String? = null
-        var sourceUrl: String? = null
-        var factEmbedding: List<Double>? = null
-        var outcome = AgentRunOutcome.FAILED
-
-        if (response != null && response.isNotBlank()) {
-            try {
-                val factData = json.decodeFromString<ChickenFactJson>(response)
-                fact = factData.fact
-                sourceUrl = factData.sourceUrl
-                outcome = AgentRunOutcome.SUCCESS
-                log.info { "Successfully parsed chicken fact: $fact from $sourceUrl" }
-            } catch (ex: Exception) {
-                log.error(ex) { "Failed to parse JSON response from agent: $response" }
-                failureReason = "Failed to parse JSON: ${ex.message}"
-                outcome = AgentRunOutcome.FAILED
-            }
-        } else if (response == null) {
-            outcome = AgentRunOutcome.FAILED
-        } else {
-            outcome = AgentRunOutcome.NO_OUTPUT
-        }
-
-        val failureDetails = failureReason?.let { " Reason: $it" }.orEmpty()
-
-        when (outcome) {
-            AgentRunOutcome.SUCCESS -> {
-                log.info { "Koog agent successfully produced fact" }
-                if (!fact.isNullOrBlank() && ollamaEmbeddingService.isReady()) {
-                    factEmbedding = runBlocking {
-                        ollamaEmbeddingService.embedFact(fact!!.trim())
-                    }
-                    if (factEmbedding == null) {
-                        log.warn { "Embedding generation failed for chicken fact run $runId" }
-                    }
-                } else if (fact.isNullOrBlank()) {
-                    log.warn { "Skipping embedding generation; chicken fact is blank." }
-                } else {
-                    log.warn { "Skipping embedding generation; embedding service is not ready." }
+                withTimeout(properties.scheduler.timeout.toMillis()) {
+                    executeResearch()
                 }
             }
-            AgentRunOutcome.NO_OUTPUT -> log.warn { "Koog agent returned no chicken facts." }
-            AgentRunOutcome.FAILED -> log.error { "Koog agent failed to produce chicken facts.$failureDetails" }
+        } catch (ex: TimeoutCancellationException) {
+            log.error(ex) { "$TASK_NAME run $runId timed out after ${properties.scheduler.timeout}" }
+            ChickenFactExecution(
+                outcome = AgentRunOutcome.TIMEOUT,
+                errorMessage = "Run exceeded timeout ${properties.scheduler.timeout}",
+            )
+        } catch (ex: Exception) {
+            log.error(ex) { "$TASK_NAME run $runId failed" }
+            ChickenFactExecution(
+                outcome = AgentRunOutcome.FAILED,
+                errorMessage = ex.message ?: ex.javaClass.simpleName,
+            )
         }
+        val completedAt = Instant.now()
 
         val record = ChickenFactsRecord(
             runId = runId,
             startedAt = startedAt,
             completedAt = completedAt,
             durationMillis = Duration.between(startedAt, completedAt).toMillis(),
-            outcome = outcome,
-            fact = fact,
-            sourceUrl = sourceUrl,
-            factEmbedding = factEmbedding,
-            errorMessage = when {
-                outcome != AgentRunOutcome.FAILED -> null
-                !failureReason.isNullOrBlank() -> failureReason
-                response == null -> "Agent returned null response"
-                else -> null
-            },
+            outcome = execution.outcome,
+            fact = execution.fact,
+            sourceUrl = execution.sourceUrl,
+            factEmbedding = execution.factEmbedding,
+            errorMessage = execution.errorMessage,
         )
 
+        var metricResult = execution.outcome.toScheduledTaskResult()
         try {
             chickenFactsRepository.create(record)
         } catch (ex: Exception) {
-            log.error(ex) { "Failed to persist chicken facts run ${record.runId} to Google Sheets." }
+            metricResult = ScheduledTaskResult.PERSISTENCE_FAILURE
+            log.error(ex) { "Failed to persist $TASK_NAME run $runId to Google Sheets" }
         }
-        log.info { "Chicken Fact Researcher scheduled task completed at: ${LocalDateTime.now()}" }
+        taskMonitor.complete(metricResult, startedAt, Instant.now())
+        log.info { "$TASK_NAME run $runId completed with result ${metricResult.metricValue}" }
+    }
+
+    @Scheduled(fixedDelayString = "\${koog.ollama.readiness-metrics-refresh-delay:PT15S}")
+    fun refreshReadinessMetrics() {
+        refreshConfigurationMetrics()
+    }
+
+    private suspend fun executeResearch(): ChickenFactExecution {
+        val response = koogChickenFactsAgent.fetchChickenFacts()
+            ?: return ChickenFactExecution(AgentRunOutcome.FAILED, errorMessage = "Agent returned null response")
+        if (response.isBlank()) {
+            return ChickenFactExecution(AgentRunOutcome.NO_OUTPUT)
+        }
+
+        val factData = try {
+            json.decodeFromString<ChickenFactJson>(response)
+        } catch (ex: Exception) {
+            return ChickenFactExecution(
+                outcome = AgentRunOutcome.FAILED,
+                errorMessage = "Failed to parse agent JSON: ${ex.message}",
+            )
+        }
+        if (factData.fact.isBlank() || factData.sourceUrl.isBlank()) {
+            return ChickenFactExecution(
+                outcome = AgentRunOutcome.FAILED,
+                errorMessage = "Agent returned a blank fact or source URL",
+            )
+        }
+        if (!ollamaEmbeddingService.isReady()) {
+            return ChickenFactExecution(
+                outcome = AgentRunOutcome.FAILED,
+                errorMessage = "Embedding service is not ready",
+            )
+        }
+
+        val embedding = ollamaEmbeddingService.embedFact(factData.fact.trim())
+            ?: return ChickenFactExecution(
+                outcome = AgentRunOutcome.FAILED,
+                errorMessage = "Embedding generation failed",
+            )
+        return ChickenFactExecution(
+            outcome = AgentRunOutcome.SUCCESS,
+            fact = factData.fact.trim(),
+            sourceUrl = factData.sourceUrl.trim(),
+            factEmbedding = embedding,
+        )
+    }
+
+    private fun persistNotReadyRun(startedAt: Instant) {
+        val completedAt = Instant.now()
+        taskMonitor.recordSkipped(ScheduledTaskResult.NOT_READY, completedAt)
+        runCatching {
+            chickenFactsRepository.create(
+                ChickenFactsRecord(
+                    runId = UUID.randomUUID().toString(),
+                    startedAt = startedAt,
+                    completedAt = completedAt,
+                    durationMillis = Duration.between(startedAt, completedAt).toMillis(),
+                    outcome = AgentRunOutcome.NOT_READY,
+                    fact = null,
+                    sourceUrl = null,
+                    errorMessage = "Agent dependencies are not ready",
+                ),
+            )
+        }.onFailure { ex ->
+            log.error(ex) { "Failed to persist $TASK_NAME not-ready run" }
+        }
+    }
+
+    private fun refreshConfigurationMetrics() {
+        taskMonitor.setConfiguration(
+            isEnabled(),
+            koogChickenFactsAgent.isReady() && ollamaEmbeddingService.isReady(),
+        )
+    }
+
+    private fun isEnabled(): Boolean = properties.enabled && properties.scheduler.enabled
+
+    private data class ChickenFactExecution(
+        val outcome: AgentRunOutcome,
+        val fact: String? = null,
+        val sourceUrl: String? = null,
+        val factEmbedding: List<Double>? = null,
+        val errorMessage: String? = null,
+    )
+
+    companion object {
+        private const val TASK_NAME = "chicken-facts"
     }
 }

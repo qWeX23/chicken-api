@@ -11,6 +11,7 @@ services:
   chicken-api:
     container_name: chicken-api
     image: chicken-api:latest
+    user: "${PUID:-1000}:${PGID:-1000}"
     build:
       context: .
       dockerfile: Dockerfile
@@ -21,25 +22,48 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-credentials.json
-      KOOG_OLLAMA_BASE_URL: ${KOOG_OLLAMA_BASE_URL:-${KOOG_AGENT_BASE_URL:-http://ollama:11434}}
-      KOOG_OLLAMA_WEB_TOOLS_BASE_URL: ${KOOG_OLLAMA_WEB_TOOLS_BASE_URL:-https://ollama.com}
-      KOOG_OLLAMA_API_KEY: ${KOOG_OLLAMA_API_KEY:-${KOOG_AGENT_API_KEY:-${OLLAMA_API_KEY:-}}}
-      KOOG_AGENT_MODEL: ${KOOG_AGENT_MODEL:-gpt-oss:120b-cloud}
+      KOOG_OLLAMA_BASE_URL: ${KOOG_OLLAMA_BASE_URL:-https://ollama.com}
+      KOOG_OLLAMA_EMBEDDING_BASE_URL: ${KOOG_OLLAMA_EMBEDDING_BASE_URL:-http://ollama:11434}
+      KOOG_OLLAMA_WEB_TOOLS_PROVIDER: ${KOOG_OLLAMA_WEB_TOOLS_PROVIDER:-searxng}
+      KOOG_OLLAMA_WEB_TOOLS_BASE_URL: ${CHICKEN_API_OLLAMA_WEB_TOOLS_BASE_URL:-${SEARXNG_BASE_URL:-http://searxng:8080}}
+      KOOG_OLLAMA_API_KEY: ""
+      KOOG_OLLAMA_API_KEY_FILE: /run/secrets/chicken-api/ollama-api-key
+      KOOG_OLLAMA_WEB_TOOLS_API_KEY: ""
+      KOOG_OLLAMA_API_KEY_REQUIRED: ${CHICKEN_API_OLLAMA_API_KEY_REQUIRED:-true}
+      KOOG_AGENT_ENABLED: ${KOOG_AGENT_ENABLED:-false}
+      KOOG_BREED_RESEARCH_AGENT_ENABLED: ${KOOG_BREED_RESEARCH_AGENT_ENABLED:-false}
+      KOOG_AGENT_MODEL: ${KOOG_AGENT_MODEL:-gpt-oss:120b}
+      KOOG_AGENT_SCHEDULER_ENABLED: ${KOOG_AGENT_SCHEDULER_ENABLED:-false}
+      KOOG_AGENT_SCHEDULER_CRON: "${KOOG_AGENT_SCHEDULER_CRON:-0 15 4 * * *}"
+      KOOG_AGENT_SCHEDULER_ZONE: ${KOOG_AGENT_SCHEDULER_ZONE:-America/Chicago}
+      KOOG_AGENT_SCHEDULER_TIMEOUT: ${KOOG_AGENT_SCHEDULER_TIMEOUT:-PT30M}
+      KOOG_BREED_RESEARCH_AGENT_SCHEDULER_ENABLED: ${KOOG_BREED_RESEARCH_AGENT_SCHEDULER_ENABLED:-false}
+      KOOG_BREED_RESEARCH_AGENT_SCHEDULER_CRON: "${KOOG_BREED_RESEARCH_AGENT_SCHEDULER_CRON:-0 15 5 * * *}"
+      KOOG_BREED_RESEARCH_AGENT_SCHEDULER_ZONE: ${KOOG_BREED_RESEARCH_AGENT_SCHEDULER_ZONE:-America/Chicago}
+      KOOG_BREED_RESEARCH_AGENT_SCHEDULER_TIMEOUT: ${KOOG_BREED_RESEARCH_AGENT_SCHEDULER_TIMEOUT:-PT30M}
       KOOG_TRACING_PHOENIX_ENABLED: ${KOOG_TRACING_PHOENIX_ENABLED:-true}
-      KOOG_TRACING_PHOENIX_VERBOSE: ${KOOG_TRACING_PHOENIX_VERBOSE:-true}
+      KOOG_TRACING_PHOENIX_VERBOSE: ${KOOG_TRACING_PHOENIX_VERBOSE:-false}
       PHOENIX_COLLECTOR_ENDPOINT: ${PHOENIX_COLLECTOR_ENDPOINT:-http://phoenix:6006/v1/traces}
       PHOENIX_PROJECT_NAME: ${PHOENIX_PROJECT_NAME:-chicken-api}
     volumes:
       - ${GOOGLE_APPLICATION_CREDENTIALS_FILE:?Set GOOGLE_APPLICATION_CREDENTIALS_FILE}:/run/secrets/google-credentials.json:ro
+      - ./secrets:/run/secrets/chicken-api:ro
     networks:
       - shared
+    expose:
+      - "8081"
     healthcheck:
-      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8080/actuator/health > /dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8081/actuator/health/readiness > /dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 40s
-    stop_grace_period: 30s
+    stop_grace_period: 31m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 networks:
   shared:

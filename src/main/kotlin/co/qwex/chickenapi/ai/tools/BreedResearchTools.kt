@@ -7,10 +7,26 @@ import co.qwex.chickenapi.model.Breed
 import co.qwex.chickenapi.repository.BreedRepository
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonIgnoreUnknownKeys
 import mu.KotlinLogging
+import java.util.concurrent.atomic.AtomicReference
 
 private val log = KotlinLogging.logger {}
 private val json = Json { prettyPrint = true }
+
+class BreedResearchRunContext {
+    private val selectedBreedId = AtomicReference<Int?>()
+
+    fun reset() = selectedBreedId.set(null)
+
+    fun select(breedId: Int) = selectedBreedId.set(breedId)
+
+    fun validate(breedId: Int): String? {
+        val selected = selectedBreedId.get()
+            ?: return "No breed has been selected for this research run"
+        return if (selected == breedId) null else "Breed ID $breedId does not match selected breed ID $selected"
+    }
+}
 
 /**
  * Tool for selecting the next breed to research based on updatedAt timestamp.
@@ -19,6 +35,7 @@ private val json = Json { prettyPrint = true }
  */
 class GetNextBreedToResearchTool(
     private val breedRepository: BreedRepository,
+    private val runContext: BreedResearchRunContext = BreedResearchRunContext(),
 ) : SimpleTool<GetNextBreedToResearchTool.Args>(
         argsType = typeToken<Args>(),
         name = "get_next_breed_to_research",
@@ -26,6 +43,7 @@ class GetNextBreedToResearchTool(
     ) {
 
     @Serializable
+    @JsonIgnoreUnknownKeys
     data class Args(
         @property:LLMDescription("Set to true to get the next breed that needs research")
         val fetch: Boolean = true,
@@ -77,6 +95,7 @@ class GetNextBreedToResearchTool(
             lastUpdated = selectedBreed.updatedAt?.toString(),
             reason = reason,
         )
+        runContext.select(selectedBreed.id)
 
         return json.encodeToString(Result.serializer(), result)
     }
@@ -87,6 +106,7 @@ class GetNextBreedToResearchTool(
  */
 class GetBreedDetailsTool(
     private val breedRepository: BreedRepository,
+    private val runContext: BreedResearchRunContext = BreedResearchRunContext(),
 ) : SimpleTool<GetBreedDetailsTool.Args>(
         argsType = typeToken<Args>(),
         name = "get_breed_details",
@@ -94,6 +114,7 @@ class GetBreedDetailsTool(
     ) {
 
     @Serializable
+    @JsonIgnoreUnknownKeys
     data class Args(
         @property:LLMDescription("The ID of the breed to fetch details for")
         val breedId: Int,
@@ -114,6 +135,11 @@ class GetBreedDetailsTool(
 
     override suspend fun execute(args: Args): String {
         log.info { "Fetching details for breed ID: ${args.breedId}" }
+
+        runContext.validate(args.breedId)?.let { error ->
+            log.warn { error }
+            return """{"error": "$error"}"""
+        }
 
         val breed = breedRepository.getBreedById(args.breedId)
         if (breed == null) {
@@ -145,6 +171,7 @@ class GetBreedDetailsTool(
  */
 class SaveBreedResearchTool(
     private val breedRepository: BreedRepository,
+    private val runContext: BreedResearchRunContext = BreedResearchRunContext(),
 ) : SimpleTool<SaveBreedResearchTool.Args>(
         argsType = typeToken<Args>(),
         name = "save_breed_research",
@@ -152,6 +179,7 @@ class SaveBreedResearchTool(
     ) {
 
     @Serializable
+    @JsonIgnoreUnknownKeys
     data class Args(
         @property:LLMDescription("The breed ID being researched")
         val breedId: Int,
@@ -208,6 +236,20 @@ class SaveBreedResearchTool(
     override suspend fun execute(args: Args): String {
         log.info { "Saving breed research for breed ID: ${args.breedId}" }
         log.info { "Description length: ${args.description.length} chars, Sources: ${args.sources.size}" }
+
+        runContext.validate(args.breedId)?.let { error ->
+            log.error { error }
+            return json.encodeToString(
+                Result.serializer(),
+                Result(
+                    success = false,
+                    breedId = args.breedId,
+                    breedName = "UNKNOWN",
+                    fieldsUpdated = emptyList(),
+                    error = error,
+                ),
+            )
+        }
 
         val existingBreed = breedRepository.getBreedById(args.breedId)
         if (existingBreed == null) {

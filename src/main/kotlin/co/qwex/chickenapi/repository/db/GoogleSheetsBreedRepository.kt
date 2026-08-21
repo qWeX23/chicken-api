@@ -30,15 +30,13 @@ class GoogleSheetsBreedRepository(
 
     override fun getBreedById(id: Int): Breed? {
         sheetsGateway.ensureTableExists(table)
-        val rowNumber = id + table.columns.headerRow
-        val values = sheetsGateway.getValues(table.rowRange(rowNumber))
-        log.info { "Fetched breed with ID $id: $values" }
-        return values.mapNotNull(table.mapper::map).firstOrNull()
+        return findBreedRow(id)?.second
     }
 
     override fun update(entity: Breed) {
         sheetsGateway.ensureTableExists(table)
-        val rowNumber = entity.id + table.columns.headerRow
+        val rowNumber = findBreedRow(entity.id)?.first
+            ?: throw IllegalArgumentException("Breed with ID ${entity.id} does not exist")
         val updatedAt = Instant.now()
         val row = listOf(
             entity.id,
@@ -56,8 +54,17 @@ class GoogleSheetsBreedRepository(
                 ?.let { sources -> json.encodeToString(sources) }
                 .orEmpty(),
         )
-        sheetsGateway.updateValues(table.rowRange(rowNumber), listOf(row), ValueInputOption.USER_ENTERED)
+        sheetsGateway.updateValues(table.rowRange(rowNumber), listOf(row), ValueInputOption.RAW)
 
         log.info { "Updated breed ${entity.id} (${entity.name}) at $updatedAt" }
     }
+
+    private fun findBreedRow(id: Int): Pair<Int, Breed>? =
+        sheetsGateway.getValues(table.dataRange())
+            .mapIndexedNotNull { index, row ->
+                table.mapper.map(row)
+                    ?.takeIf { it.id == id }
+                    ?.let { breed -> (table.columns.dataStartRow + index) to breed }
+            }
+            .firstOrNull()
 }

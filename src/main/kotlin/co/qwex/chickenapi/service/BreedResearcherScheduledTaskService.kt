@@ -1,10 +1,14 @@
 package co.qwex.chickenapi.service
 
 import co.qwex.chickenapi.ai.KoogBreedResearchAgent
+import co.qwex.chickenapi.config.BreedResearchAgentProperties
 import co.qwex.chickenapi.model.AgentRunOutcome
 import co.qwex.chickenapi.model.BreedResearchRecord
 import co.qwex.chickenapi.repository.BreedResearchRepository
+import jakarta.annotation.PostConstruct
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import mu.KotlinLogging
@@ -12,7 +16,6 @@ import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import java.time.Duration
 import java.time.Instant
-import java.time.LocalDateTime
 import java.util.UUID
 
 /**
@@ -47,104 +50,174 @@ data class SavedBreedData(
 class BreedResearcherScheduledTaskService(
     private val koogBreedResearchAgent: KoogBreedResearchAgent,
     private val breedResearchRepository: BreedResearchRepository,
+    private val properties: BreedResearchAgentProperties,
+    scheduledTaskMetrics: ScheduledTaskMetrics,
 ) {
     private val log = KotlinLogging.logger {}
     private val json = Json { ignoreUnknownKeys = true }
+    private val taskMonitor = scheduledTaskMetrics.register(TASK_NAME, properties.scheduler.timeout)
 
-    @Scheduled(fixedRateString = "\${koog.breed-research-agent.scheduler.fixed-rate:PT5H}") // Default: every 5 hours
+    @PostConstruct
+    fun initializeMetrics() {
+        refreshConfigurationMetrics()
+        runCatching {
+            val latestRun = breedResearchRepository.fetchLatestRun()
+            val latestSuccess = breedResearchRepository.fetchAllSuccessfulResearch().firstOrNull()
+            taskMonitor.restore(
+                latestRunStartedAt = latestRun?.startedAt,
+                latestRunCompletedAt = latestRun?.completedAt,
+                latestRunDurationMillis = latestRun?.durationMillis,
+                latestRunOutcome = latestRun?.outcome,
+                latestSuccessAt = latestSuccess?.completedAt,
+            )
+            taskMonitor.setHistoryLoaded(true)
+        }.onFailure { ex ->
+            log.warn(ex) { "Unable to restore $TASK_NAME metrics from Google Sheets" }
+        }
+        log.info {
+            "$TASK_NAME configured: enabled=${isEnabled()}, cron='${properties.scheduler.cron}', zone=${properties.scheduler.zone}, timeout=${properties.scheduler.timeout}"
+        }
+    }
+
+    @Scheduled(
+        cron = "\${koog.breed-research-agent.scheduler.cron:0 15 5 * * *}",
+        zone = "\${koog.breed-research-agent.scheduler.zone:America/Chicago}",
+    )
     fun runDailyBreedResearchTask() {
-        log.info { "Breed Research scheduled task started at: ${LocalDateTime.now()}" }
+        refreshConfigurationMetrics()
+        if (!isEnabled()) {
+            log.warn { "$TASK_NAME is disabled; scheduled invocation skipped" }
+            return
+        }
+
+        val startedAt = Instant.now()
         if (!koogBreedResearchAgent.isReady()) {
-            log.info { "Breed research agent is not ready, skipping run." }
+            log.error { "$TASK_NAME dependencies are not ready; scheduled invocation skipped" }
+            persistNotReadyRun(startedAt)
+            return
+        }
+
+        if (!taskMonitor.tryStart(startedAt)) {
+            log.warn { "$TASK_NAME is already running; overlapping invocation skipped" }
             return
         }
 
         val runId = UUID.randomUUID().toString()
-        val startedAt = Instant.now()
+        log.info { "$TASK_NAME run $runId started" }
 
-        var failureReason: String? = null
-        val response = try {
+        val execution = try {
             runBlocking {
-                koogBreedResearchAgent.researchBreed()
+                withTimeout(properties.scheduler.timeout.toMillis()) {
+                    executeResearch()
+                }
             }
+        } catch (ex: TimeoutCancellationException) {
+            log.error(ex) { "$TASK_NAME run $runId timed out after ${properties.scheduler.timeout}" }
+            BreedResearchExecution(
+                outcome = AgentRunOutcome.TIMEOUT,
+                errorMessage = "Run exceeded timeout ${properties.scheduler.timeout}",
+            )
         } catch (ex: Exception) {
-            failureReason = ex.message
-            log.error(ex) { "Breed research agent invocation threw an exception" }
-            null
+            log.error(ex) { "$TASK_NAME run $runId failed" }
+            BreedResearchExecution(
+                outcome = AgentRunOutcome.FAILED,
+                errorMessage = ex.message ?: ex.javaClass.simpleName,
+            )
         }
-
         val completedAt = Instant.now()
 
-        // Parse result from agent - the tool now saves directly, we just track the outcome
-        var outcome = AgentRunOutcome.FAILED
-        var breedId = -1
-        var breedName = "UNKNOWN"
-        var fieldsUpdated = emptyList<String>()
-        var report: String? = null
-        var sourcesFound = emptyList<String>()
-
-        if (response != null && response.isNotBlank()) {
-            // Parse save_breed_research JSON result from the agent response.
-            val result = parseSaveResult(response)
-            if (result != null) {
-                breedId = result.breedId
-                breedName = result.breedName
-                fieldsUpdated = result.fieldsUpdated
-                report = result.savedData?.description
-                sourcesFound = result.savedData?.sources ?: emptyList()
-                outcome = if (result.success) AgentRunOutcome.SUCCESS else AgentRunOutcome.FAILED
-                if (!result.success) {
-                    failureReason = result.error
-                }
-                log.info { "Parsed save result: success=${result.success}, breed='$breedName', fields=$fieldsUpdated" }
-            } else {
-                // Agent returned a response but we couldn't find save result - agent may have just chatted
-                log.warn { "Agent response did not contain save_breed_research result" }
-                outcome = AgentRunOutcome.NO_OUTPUT
-            }
-        } else if (response == null) {
-            outcome = AgentRunOutcome.FAILED
-        } else {
-            outcome = AgentRunOutcome.NO_OUTPUT
-        }
-
-        val failureDetails = failureReason?.let { " Reason: $it" }.orEmpty()
-
-        when (outcome) {
-            AgentRunOutcome.SUCCESS -> log.info { "Breed research agent successfully researched breed '$breedName'" }
-            AgentRunOutcome.NO_OUTPUT -> log.warn { "Breed research agent returned no actionable output." }
-            AgentRunOutcome.FAILED -> log.error { "Breed research agent failed.$failureDetails" }
-        }
-
-        // Create the research record for tracking
         val record = BreedResearchRecord(
             runId = runId,
-            breedId = breedId,
-            breedName = breedName,
+            breedId = execution.breedId,
+            breedName = execution.breedName,
             startedAt = startedAt,
             completedAt = completedAt,
             durationMillis = Duration.between(startedAt, completedAt).toMillis(),
-            outcome = outcome,
-            report = report,
-            sourcesFound = sourcesFound,
-            fieldsUpdated = fieldsUpdated,
-            errorMessage = when {
-                outcome != AgentRunOutcome.FAILED -> null
-                !failureReason.isNullOrBlank() -> failureReason
-                response == null -> "Agent returned null response"
-                else -> null
-            },
+            outcome = execution.outcome,
+            report = execution.report,
+            sourcesFound = execution.sourcesFound,
+            fieldsUpdated = execution.fieldsUpdated,
+            errorMessage = execution.errorMessage,
         )
 
+        var metricResult = execution.outcome.toScheduledTaskResult()
         try {
             breedResearchRepository.create(record)
-            log.info { "Persisted breed research record for run $runId" }
         } catch (ex: Exception) {
-            log.error(ex) { "Failed to persist breed research run ${record.runId} to Google Sheets." }
+            metricResult = ScheduledTaskResult.PERSISTENCE_FAILURE
+            log.error(ex) { "Failed to persist $TASK_NAME run $runId to Google Sheets" }
+        }
+        taskMonitor.complete(metricResult, startedAt, Instant.now())
+        log.info { "$TASK_NAME run $runId completed with result ${metricResult.metricValue}" }
+    }
+
+    @Scheduled(fixedDelayString = "\${koog.ollama.readiness-metrics-refresh-delay:PT15S}")
+    fun refreshReadinessMetrics() {
+        refreshConfigurationMetrics()
+    }
+
+    private suspend fun executeResearch(): BreedResearchExecution {
+        val response = koogBreedResearchAgent.researchBreed()
+            ?: return BreedResearchExecution(AgentRunOutcome.FAILED, errorMessage = "Agent returned null response")
+        if (response.isBlank()) {
+            return BreedResearchExecution(AgentRunOutcome.NO_OUTPUT)
         }
 
-        log.info { "Breed Research scheduled task completed at: ${LocalDateTime.now()}" }
+        val result = parseSaveResult(response)
+            ?: return BreedResearchExecution(
+                outcome = AgentRunOutcome.NO_OUTPUT,
+                errorMessage = "Agent response did not contain a save result",
+            )
+        return BreedResearchExecution(
+            outcome = if (result.success) AgentRunOutcome.SUCCESS else AgentRunOutcome.FAILED,
+            breedId = result.breedId,
+            breedName = result.breedName,
+            report = result.savedData?.description,
+            sourcesFound = result.savedData?.sources.orEmpty(),
+            fieldsUpdated = result.fieldsUpdated,
+            errorMessage = result.error,
+        )
     }
+
+    private fun persistNotReadyRun(startedAt: Instant) {
+        val completedAt = Instant.now()
+        taskMonitor.recordSkipped(ScheduledTaskResult.NOT_READY, completedAt)
+        runCatching {
+            breedResearchRepository.create(
+                BreedResearchRecord(
+                    runId = UUID.randomUUID().toString(),
+                    breedId = -1,
+                    breedName = "UNKNOWN",
+                    startedAt = startedAt,
+                    completedAt = completedAt,
+                    durationMillis = Duration.between(startedAt, completedAt).toMillis(),
+                    outcome = AgentRunOutcome.NOT_READY,
+                    report = null,
+                    sourcesFound = emptyList(),
+                    fieldsUpdated = emptyList(),
+                    errorMessage = "Agent dependencies are not ready",
+                ),
+            )
+        }.onFailure { ex ->
+            log.error(ex) { "Failed to persist $TASK_NAME not-ready run" }
+        }
+    }
+
+    private fun refreshConfigurationMetrics() {
+        taskMonitor.setConfiguration(isEnabled(), koogBreedResearchAgent.isReady())
+    }
+
+    private fun isEnabled(): Boolean = properties.enabled && properties.scheduler.enabled
+
+    private data class BreedResearchExecution(
+        val outcome: AgentRunOutcome,
+        val breedId: Int = -1,
+        val breedName: String = "UNKNOWN",
+        val report: String? = null,
+        val sourcesFound: List<String> = emptyList(),
+        val fieldsUpdated: List<String> = emptyList(),
+        val errorMessage: String? = null,
+    )
 
     /**
      * Parses save_breed_research JSON from the response.
@@ -222,5 +295,9 @@ class BreedResearcherScheduledTaskService(
         }
 
         return null
+    }
+
+    companion object {
+        private const val TASK_NAME = "breed-research"
     }
 }

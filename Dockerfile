@@ -27,6 +27,6 @@ COPY --from=build /workspace/build/libs/*.jar /app/app.jar
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+UseStringDeduplication -XX:+ExitOnOutOfMemoryError"
 
 USER spring:spring
-EXPOSE 8080
+EXPOSE 8080 8081
 
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

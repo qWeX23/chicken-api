@@ -11,7 +11,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 data class BreedResearchAgentProperties(
     val enabled: Boolean = true,
     val model: String = "gpt-oss:120b",
+    val contextLength: Int = 8_192,
     val webSearchMaxResults: Int = 3,
-    val maxAgentIterations: Int = 100,
+    val maxAgentIterations: Int = 128,
     val maxToolCalls: Int = 8,
+    val scheduler: AgentSchedulerProperties = AgentSchedulerProperties(cron = "0 15 5 * * *"),
 )

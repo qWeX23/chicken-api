@@ -2,7 +2,7 @@
 
 **Date**: 2025-12-20
 **Branch**: `claude/investigate-breed-research-uyq5H`
-**Status**: Updated with new findings
+**Status**: Historical. Tool-result capture is fixed and scheduling has moved to a monitored daily cron.
 
 ## Summary
 

@@ -17,6 +17,8 @@ private val log = KotlinLogging.logger {}
  */
 @Component
 class RequestLoggingFilter : OncePerRequestFilter() {
+    override fun shouldNotFilter(request: HttpServletRequest): Boolean = isOperationalPath(request.requestURI)
+
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
@@ -44,3 +46,6 @@ class RequestLoggingFilter : OncePerRequestFilter() {
         const val REQUEST_ID_ATTRIBUTE = "co.qwex.chickenapi.logging.REQUEST_ID"
     }
 }
+
+internal fun isOperationalPath(path: String): Boolean =
+    path.startsWith("/actuator") || path == "/livez" || path == "/readyz"

@@ -31,12 +31,15 @@ class RequestLoggingInterceptor(
         handler: Any,
         ex: Exception?,
     ) {
+        if (isOperationalPath(request.requestURI)) {
+            return
+        }
         val startTime = request.getAttribute(REQUEST_START_TIME_ATTRIBUTE) as? Long ?: return
         val durationMs = System.currentTimeMillis() - startTime
         val logEntry = RequestLogEntry(
             timestamp = OffsetDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
             method = request.method,
-            path = buildFullPath(request),
+            path = request.requestURI,
             status = response.status,
             durationMs = durationMs,
             clientIp = extractClientIp(request),
@@ -45,15 +48,6 @@ class RequestLoggingInterceptor(
         )
 
         requestLoggingService.recordRequest(logEntry)
-    }
-
-    private fun buildFullPath(request: HttpServletRequest): String {
-        val query = request.queryString
-        return if (query.isNullOrBlank()) {
-            request.requestURI
-        } else {
-            "${request.requestURI}?$query"
-        }
     }
 
     private fun extractClientIp(request: HttpServletRequest): String? {

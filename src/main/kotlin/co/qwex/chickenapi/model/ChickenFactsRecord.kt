@@ -19,4 +19,6 @@ enum class AgentRunOutcome {
     SUCCESS,
     NO_OUTPUT,
     FAILED,
+    TIMEOUT,
+    NOT_READY,
 }

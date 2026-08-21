@@ -2,7 +2,7 @@
 
 **Date**: 2026-05-18
 **Branch**: `docs/web-tools-404-investigation`
-**Status**: Diagnosis complete, remediation plan proposed
+**Status**: Superseded. Production now uses internal SearXNG for search; hosted Ollama web tools are no longer required.
 
 ## Summary
 

@@ -20,8 +20,10 @@ images
 .env.*
 src/main/resources/application-local.properties
 chicken-api-*.json
+google-credentials.json
 dummy-creds.json
 openai_api_key.txt
 agent-traces.log
 agent-traces-*.log
 agenttraces
+secrets

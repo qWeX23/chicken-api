@@ -7,18 +7,23 @@ import ai.koog.agents.features.tracing.feature.Tracing
 import ai.koog.agents.features.tracing.writer.TraceFeatureMessageLogWriter
 import ai.koog.http.client.ktor.KtorKoogHttpClient
 import ai.koog.prompt.dsl.prompt
-import ai.koog.prompt.executor.llms.all.simpleOllamaAIExecutor
+import ai.koog.prompt.executor.clients.ConnectionTimeoutConfig
+import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
+import ai.koog.prompt.executor.ollama.client.OllamaClient
+import ai.koog.prompt.executor.ollama.client.OllamaParams
 import ai.koog.prompt.llm.LLMCapability
 import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
 import co.qwex.chickenapi.ai.tools.GetBreedDetailsTool
 import co.qwex.chickenapi.ai.tools.GetNextBreedToResearchTool
+import co.qwex.chickenapi.ai.tools.BreedResearchRunContext
 import co.qwex.chickenapi.ai.tools.SaveBreedResearchTool
 import co.qwex.chickenapi.ai.tools.WebFetchTool
 import co.qwex.chickenapi.ai.tools.WebSearchTool
 import co.qwex.chickenapi.config.BreedResearchAgentProperties
 import co.qwex.chickenapi.config.KoogOllamaProperties
 import co.qwex.chickenapi.config.PhoenixTracingProperties
+import co.qwex.chickenapi.config.WebToolsProvider
 import co.qwex.chickenapi.repository.BreedRepository
 import io.github.oshai.kotlinlogging.KotlinLogging as OshaiKotlinLogging
 import jakarta.annotation.PostConstruct
@@ -28,7 +33,9 @@ import io.ktor.client.HttpClient
 import mu.KotlinLogging
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Wraps a Koog single-run agent that researches chicken breeds in depth.
@@ -43,14 +50,32 @@ class KoogBreedResearchAgent(
     private val phoenixSpanExporterProvider: ObjectProvider<OtlpHttpSpanExporter>,
     private val phoenixResourceAttributesProvider: ObjectProvider<Map<String, Any>>,
     private val breedRepository: BreedRepository,
+    private val dependencyValidator: AgentDependencyValidator,
     @Qualifier("koogBreedResearchHttpClient")
-    private val httpClientProvider: ObjectProvider<HttpClient>,
+    private val llmHttpClientProvider: ObjectProvider<HttpClient>,
+    @Qualifier("koogBreedResearchWebToolsHttpClient")
+    private val webToolsHttpClientProvider: ObjectProvider<HttpClient>,
 ) {
     private val log = KotlinLogging.logger {}
     private val sanitizedBaseUrl = ollamaProperties.normalizedBaseUrl
     private val sanitizedWebToolsBaseUrl = ollamaProperties.normalizedWebToolsBaseUrl
+    private val runContext = BreedResearchRunContext()
+    private val runInProgress = AtomicBoolean()
 
+    @Volatile
     private var runtime: AgentRuntime? = null
+
+    @Volatile
+    private var saveTool: SaveBreedResearchTool? = null
+
+    @Volatile
+    private var nextInitializationAttemptMillis = 0L
+
+    @Volatile
+    private var shuttingDown = false
+
+    @Volatile
+    private var dependenciesReady = false
 
     @PostConstruct
     fun initialize() {
@@ -58,13 +83,40 @@ class KoogBreedResearchAgent(
             log.info { "Koog breed research agent disabled via configuration." }
             return
         }
+        initializeRuntime()
+    }
 
-        val llmHttpClient = httpClientProvider.getIfAvailable() ?: return
-        val webToolClient = llmHttpClient
+    @Synchronized
+    private fun initializeRuntime() {
+        if (runtime != null || shuttingDown || System.currentTimeMillis() < nextInitializationAttemptMillis) {
+            return
+        }
+
+        val llmHttpClient = llmHttpClientProvider.getIfAvailable()
+        val webToolClient = webToolsHttpClientProvider.getIfAvailable()
+        if (llmHttpClient == null || webToolClient == null) {
+            deferInitializationRetry()
+            return
+        }
+        try {
+            kotlinx.coroutines.runBlocking {
+                dependencyValidator.requireModels(llmHttpClient, listOf(properties.model))
+                dependencyValidator.requireGeneration(llmHttpClient, properties.model)
+                dependencyValidator.requireWebSearch(webToolClient)
+            }
+        } catch (ex: Exception) {
+            log.error(ex) { "Koog breed research dependencies are not ready" }
+            deferInitializationRetry()
+            return
+        }
         val promptExecutor =
-            simpleOllamaAIExecutor(
-                baseUrl = sanitizedBaseUrl,
-                httpClientFactory = KtorKoogHttpClient.Factory(llmHttpClient),
+            MultiLLMPromptExecutor(
+                LLMProvider.Ollama to
+                    OllamaClient(
+                        baseUrl = sanitizedBaseUrl,
+                        httpClientFactory = KtorKoogHttpClient.Factory(llmHttpClient),
+                        timeoutConfig = ollamaTimeoutConfig(),
+                    ),
             )
 
         val model =
@@ -76,53 +128,82 @@ class KoogBreedResearchAgent(
                     LLMCapability.Tools,
                     LLMCapability.Schema.JSON.Basic,
                 ),
-                contextLength = 131_072,
+                contextLength = properties.contextLength.toLong(),
             )
 
         // Create tools
-        val getNextBreedTool = GetNextBreedToResearchTool(breedRepository)
-        val getBreedDetailsTool = GetBreedDetailsTool(breedRepository)
+        val getNextBreedTool = GetNextBreedToResearchTool(breedRepository, runContext)
+        val getBreedDetailsTool = GetBreedDetailsTool(breedRepository, runContext)
         val webSearchTool =
             WebSearchTool(
                 httpClient = webToolClient,
                 baseUrl = sanitizedWebToolsBaseUrl,
                 defaultMaxResults = properties.webSearchMaxResults,
+                provider = ollamaProperties.webToolsProvider,
             )
-        val webFetchTool =
+        val webFetchTool = if (ollamaProperties.webToolsProvider == WebToolsProvider.OLLAMA) {
             WebFetchTool(
                 httpClient = webToolClient,
                 baseUrl = sanitizedWebToolsBaseUrl,
             )
-        val saveBreedResearchTool = SaveBreedResearchTool(breedRepository)
+        } else {
+            null
+        }
+        val saveBreedResearchTool = SaveBreedResearchTool(breedRepository, runContext)
 
         val toolRegistry =
             ToolRegistry {
                 tool(getNextBreedTool)
                 tool(getBreedDetailsTool)
                 tool(webSearchTool)
-                tool(webFetchTool)
+                if (webFetchTool != null) {
+                    tool(webFetchTool)
+                }
                 tool(saveBreedResearchTool)
             }
 
         val agentConfig =
             AIAgentConfig(
-                prompt = prompt("breed_research_prompt") {
+                prompt = prompt(
+                    id = "breed_research_prompt",
+                    params = OllamaParams(think = false),
+                ) {
                     system(BREED_RESEARCH_SYSTEM_PROMPT)
                 },
                 model = model,
                 maxAgentIterations = properties.maxAgentIterations,
             )
 
+        saveTool = saveBreedResearchTool
         runtime = AgentRuntime(llmHttpClient, webToolClient, toolRegistry, promptExecutor, model, agentConfig)
+        dependenciesReady = true
         log.info {
-            "Koog breed research agent initialized with model ${properties.model}; llm base ${ollamaProperties.baseUrl}; web tools base ${ollamaProperties.webToolsBaseUrl}"
+            "Koog breed research agent initialized with model ${properties.model}; llm base ${ollamaProperties.baseUrl}; web tools ${ollamaProperties.webToolsProvider} at ${ollamaProperties.webToolsBaseUrl}"
+        }
+    }
+
+    @Scheduled(fixedDelayString = "\${koog.ollama.agent-readiness-retry-delay:PT1M}")
+    fun retryInitialization() {
+        if (!properties.enabled) {
+            return
+        }
+        val activeRuntime = runtime
+        if (activeRuntime == null) {
+            initializeRuntime()
+        } else if (!dependenciesReady) {
+            revalidateDependencies(activeRuntime)
         }
     }
 
     /**
      * Indicates whether the Koog agent is ready to accept runs.
      */
-    fun isReady(): Boolean = runtime != null
+    fun isReady(): Boolean {
+        if (properties.enabled && runtime == null) {
+            initializeRuntime()
+        }
+        return runtime != null && dependenciesReady
+    }
 
     /**
      * Creates and runs a new agent instance to research a breed.
@@ -130,13 +211,17 @@ class KoogBreedResearchAgent(
      */
     suspend fun researchBreed(): String? {
         val activeRuntime = runtime ?: return null
+        val activeSaveTool = saveTool ?: return null
+        check(runInProgress.compareAndSet(false, true)) { "Breed research agent is already running" }
 
         return try {
+            runContext.reset()
             log.info { "Creating new agent instance for breed research" }
             val agent =
                 ai.koog.agents.core.agent.AIAgent(
                     promptExecutor = activeRuntime.promptExecutor,
                     strategy = breedResearchStrategy(
+                        saveTool = activeSaveTool,
                         maxToolCalls = properties.maxToolCalls,
                     ),
                     toolRegistry = activeRuntime.toolRegistry,
@@ -166,19 +251,60 @@ class KoogBreedResearchAgent(
                 }
             agent.run(BREED_RESEARCH_USER_PROMPT)
         } catch (ex: Exception) {
+            dependenciesReady = false
+            deferInitializationRetry()
             log.error(ex) { "Koog agent failed to research breed." }
-            null
+            throw ex
+        } finally {
+            runInProgress.set(false)
         }
     }
 
     @PreDestroy
+    @Synchronized
     fun shutdown() {
-        runtime?.promptExecutor?.close()
-        runtime?.toolsHttpClient?.close()
-        runtime?.ollamaHttpClient?.close()
+        shuttingDown = true
+        val activeRuntime = runtime
+        runtime = null
+        dependenciesReady = false
+        saveTool = null
+        activeRuntime?.promptExecutor?.close()
+        activeRuntime?.toolsHttpClient?.close()
+        activeRuntime?.ollamaHttpClient?.close()
     }
 
+    private fun deferInitializationRetry() {
+        nextInitializationAttemptMillis = System.currentTimeMillis() + DEPENDENCY_RETRY_DELAY_MILLIS
+    }
+
+    @Synchronized
+    private fun revalidateDependencies(activeRuntime: AgentRuntime) {
+        if (dependenciesReady || shuttingDown || System.currentTimeMillis() < nextInitializationAttemptMillis) {
+            return
+        }
+        dependenciesReady = try {
+            kotlinx.coroutines.runBlocking {
+                dependencyValidator.requireGeneration(activeRuntime.ollamaHttpClient, properties.model)
+                dependencyValidator.requireWebSearch(activeRuntime.toolsHttpClient)
+            }
+            true
+        } catch (ex: Exception) {
+            deferInitializationRetry()
+            log.error(ex) { "Koog breed research dependencies are still unavailable" }
+            false
+        }
+    }
+
+    private fun ollamaTimeoutConfig() =
+        ConnectionTimeoutConfig(
+            requestTimeoutMillis = ollamaProperties.llmRequestTimeout.toMillis(),
+            connectTimeoutMillis = 10_000,
+            socketTimeoutMillis = ollamaProperties.llmRequestTimeout.toMillis(),
+        )
+
     companion object {
+        private const val DEPENDENCY_RETRY_DELAY_MILLIS = 60_000L
+
         private val BREED_RESEARCH_SYSTEM_PROMPT = """
             You are a chicken breed specialist who writes compelling, accurate breed descriptions for a chicken encyclopedia.
 
@@ -186,10 +312,11 @@ class KoogBreedResearchAgent(
 
             1. Call `get_next_breed_to_research` to get the breed you should research
             2. Call `get_breed_details` to see what information we currently have
-            3. Use `web_search` and `web_fetch` to research the breed (up to 8 tool calls total)
+            3. Use `web_search` to research the breed (up to 8 tool calls total)
             4. Call `save_breed_research` with your findings
-            5. When using a URL from `web_search`, copy the `Exact URL` value verbatim into `web_fetch`
-            6. `web_search` and `web_fetch` return raw snippets; summarize breed-specific facts from those results in your next visible reasoning step before choosing another tool or saving.
+            5. Copy source URLs from the `Exact URL` values returned by `web_search`
+            6. Use breed-specific facts from the `web_search` snippets when choosing another tool or saving.
+            7. Call at most one tool per turn.
 
             ## Research Focus
 

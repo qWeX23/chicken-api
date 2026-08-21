@@ -9,7 +9,10 @@ import ai.koog.agents.features.tracing.feature.Tracing
 import ai.koog.agents.features.tracing.writer.TraceFeatureMessageLogWriter
 import ai.koog.http.client.ktor.KtorKoogHttpClient
 import ai.koog.prompt.dsl.prompt
-import ai.koog.prompt.executor.llms.all.simpleOllamaAIExecutor
+import ai.koog.prompt.executor.clients.ConnectionTimeoutConfig
+import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
+import ai.koog.prompt.executor.ollama.client.OllamaClient
+import ai.koog.prompt.executor.ollama.client.OllamaParams
 import ai.koog.prompt.llm.LLMCapability
 import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
@@ -19,16 +22,20 @@ import co.qwex.chickenapi.ai.tools.WebSearchTool
 import co.qwex.chickenapi.config.KoogAgentProperties
 import co.qwex.chickenapi.config.KoogOllamaProperties
 import co.qwex.chickenapi.config.PhoenixTracingProperties
+import co.qwex.chickenapi.config.WebToolsProvider
 import io.github.oshai.kotlinlogging.KotlinLogging as OshaiKotlinLogging
 import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter
 import io.ktor.client.HttpClient
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonIgnoreUnknownKeys
 import mu.KotlinLogging
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 
 /**
@@ -43,14 +50,33 @@ class KoogChickenFactsAgent(
     private val phoenixSpanExporterProvider: ObjectProvider<OtlpHttpSpanExporter>,
     private val phoenixResourceAttributesProvider: ObjectProvider<Map<String, Any>>,
     private val chickenFactDuplicateCheckService: ChickenFactDuplicateCheckService,
+    private val dependencyValidator: AgentDependencyValidator,
     @Qualifier("koogChickenFactsHttpClient")
-    private val httpClientProvider: ObjectProvider<HttpClient>,
+    private val llmHttpClientProvider: ObjectProvider<HttpClient>,
+    @Qualifier("koogChickenFactsWebToolsHttpClient")
+    private val webToolsHttpClientProvider: ObjectProvider<HttpClient>,
 ) {
     private val log = KotlinLogging.logger {}
     private val sanitizedBaseUrl = ollamaProperties.normalizedBaseUrl
     private val sanitizedWebToolsBaseUrl = ollamaProperties.normalizedWebToolsBaseUrl
 
+    @Volatile
     private var runtime: AgentRuntime? = null
+
+    @Volatile
+    private var saveTool: SaveChickenFactTool? = null
+
+    @Volatile
+    private var searchTool: WebSearchTool? = null
+
+    @Volatile
+    private var nextInitializationAttemptMillis = 0L
+
+    @Volatile
+    private var shuttingDown = false
+
+    @Volatile
+    private var dependenciesReady = false
 
     @PostConstruct
     fun initialize() {
@@ -58,13 +84,40 @@ class KoogChickenFactsAgent(
             log.info { "Koog chicken facts agent disabled via configuration." }
             return
         }
+        initializeRuntime()
+    }
 
-        val llmHttpClient = httpClientProvider.getIfAvailable() ?: return
-        val webToolClient = llmHttpClient
+    @Synchronized
+    private fun initializeRuntime() {
+        if (runtime != null || shuttingDown || System.currentTimeMillis() < nextInitializationAttemptMillis) {
+            return
+        }
+
+        val llmHttpClient = llmHttpClientProvider.getIfAvailable()
+        val webToolClient = webToolsHttpClientProvider.getIfAvailable()
+        if (llmHttpClient == null || webToolClient == null) {
+            deferInitializationRetry()
+            return
+        }
+        try {
+            runBlocking {
+                dependencyValidator.requireModels(llmHttpClient, listOf(properties.model))
+                dependencyValidator.requireGeneration(llmHttpClient, properties.model)
+                dependencyValidator.requireWebSearch(webToolClient)
+            }
+        } catch (ex: Exception) {
+            log.error(ex) { "Koog chicken facts dependencies are not ready" }
+            deferInitializationRetry()
+            return
+        }
         val promptExecutor =
-            simpleOllamaAIExecutor(
-                baseUrl = sanitizedBaseUrl,
-                httpClientFactory = KtorKoogHttpClient.Factory(llmHttpClient),
+            MultiLLMPromptExecutor(
+                LLMProvider.Ollama to
+                    OllamaClient(
+                        baseUrl = sanitizedBaseUrl,
+                        httpClientFactory = KtorKoogHttpClient.Factory(llmHttpClient),
+                        timeoutConfig = ollamaTimeoutConfig(),
+                    ),
             )
 
         val model =
@@ -76,7 +129,7 @@ class KoogChickenFactsAgent(
                     LLMCapability.Tools,
                     LLMCapability.Schema.JSON.Basic,
                 ),
-                contextLength = 131_072,
+                contextLength = properties.contextLength.toLong(),
             )
 
         val saveChickenFactTool = SaveChickenFactTool(chickenFactDuplicateCheckService)
@@ -85,36 +138,49 @@ class KoogChickenFactsAgent(
                 httpClient = webToolClient,
                 baseUrl = sanitizedWebToolsBaseUrl,
                 defaultMaxResults = properties.webSearchMaxResults,
+                provider = ollamaProperties.webToolsProvider,
+                excludedDomains = properties.excludedSearchDomains,
+                preferredDomains = properties.preferredSearchDomains,
             )
-        val webFetchTool =
+        val webFetchTool = if (ollamaProperties.webToolsProvider == WebToolsProvider.OLLAMA) {
             WebFetchTool(
                 httpClient = webToolClient,
                 baseUrl = sanitizedWebToolsBaseUrl,
             )
+        } else {
+            null
+        }
 
         val toolRegistry =
             ToolRegistry {
                 tool(saveChickenFactTool)
                 tool(webSearchTool)
-                tool(webFetchTool)
+                if (webFetchTool != null) {
+                    tool(webFetchTool)
+                }
             }
 
         val agentConfig =
             AIAgentConfig(
-                prompt = prompt("chicken_facts_prompt") {
+                prompt = prompt(
+                    id = "chicken_facts_prompt",
+                    params = OllamaParams(think = false),
+                ) {
                     system(
                         """
         You are a chicken trivia enthusiast who loves discovering fun, quirky, and surprising facts about chickens.
 
 - When you need new information, call the web_search tool.
-- Optionally use web_fetch to pull supporting content for specific URLs.
-- When using a URL from web_search, copy the `Exact URL` value verbatim into web_fetch.
-- web_search and web_fetch return raw snippets; summarize the relevant facts in your next visible reasoning step before choosing another tool or saving.
-- You may call at most 3 tools total (any combination of web_search and web_fetch).
+- Copy the `Exact URL` value from web_search verbatim into the saved sourceUrl.
+- web_search returns raw snippets; use the relevant facts directly when choosing another search or saving.
+- Call at most one tool per turn.
+- You may call web_search at most 3 times.
 - Focus on finding interesting tidbits, amusing behaviors, historical stories, or surprising facts rather than scientific papers or academic research.
 - Look for sources like blogs, fun fact websites, farming communities, chicken keeper forums, and general interest articles.
 - Avoid overly technical or academic sources when possible.
-- After you have information from 2–4 good sources, call the save_chicken_fact tool ONCE to record your finding.
+- Search for one specific, surprising chicken fact rather than using broad "fun facts" queries.
+- Do not use Wikipedia as a source.
+- As soon as one good source supports the fact, call the save_chicken_fact tool ONCE to record it.
 - The save_chicken_fact tool preserves your research in a structured format:
   - fact: a fun, interesting, or quirky fact about chickens (plain text, no markdown)
   - sourceUrl: the URL of the source you used
@@ -127,29 +193,58 @@ class KoogChickenFactsAgent(
                 maxAgentIterations = properties.maxAgentIterations,
             )
 
+        saveTool = saveChickenFactTool
+        searchTool = webSearchTool
         runtime = AgentRuntime(llmHttpClient, webToolClient, toolRegistry, promptExecutor, model, agentConfig)
+        dependenciesReady = true
         log.info {
-            "Koog chicken facts agent initialized with model ${properties.model}; llm base ${ollamaProperties.baseUrl}; web tools base ${ollamaProperties.webToolsBaseUrl}"
+            "Koog chicken facts agent initialized with model ${properties.model}; llm base ${ollamaProperties.baseUrl}; web tools ${ollamaProperties.webToolsProvider} at ${ollamaProperties.webToolsBaseUrl}"
+        }
+    }
+
+    @Scheduled(fixedDelayString = "\${koog.ollama.agent-readiness-retry-delay:PT1M}")
+    fun retryInitialization() {
+        if (!properties.enabled) {
+            return
+        }
+        val activeRuntime = runtime
+        if (activeRuntime == null) {
+            initializeRuntime()
+        } else if (!dependenciesReady) {
+            revalidateDependencies(activeRuntime)
         }
     }
 
     /**
      * Indicates whether the Koog agent is ready to accept runs.
      */
-    fun isReady(): Boolean = runtime != null
+    fun isReady(): Boolean {
+        if (properties.enabled && runtime == null) {
+            initializeRuntime()
+        }
+        return runtime != null && dependenciesReady
+    }
 
     /**
      * Creates and runs a new agent instance (agents are single-use).
      */
     suspend fun fetchChickenFacts(): String? {
         val activeRuntime = runtime ?: return null
+        val activeSaveTool = saveTool ?: return null
+        val activeSearchTool = searchTool ?: return null
 
         return try {
             log.info { "Creating new agent instance for chicken facts fetch" }
             val agent =
                 ai.koog.agents.core.agent.AIAgent(
                     promptExecutor = activeRuntime.promptExecutor,
-                    strategy = chickenResearchStrategy(maxToolCalls = 4, maxDuplicateRetries = 3),
+                    strategy = chickenResearchStrategy(
+                        saveTool = activeSaveTool,
+                        researchTool = activeSearchTool,
+                        maxToolCalls = 4,
+                        maxDuplicateRetries = 3,
+                        retrySearchBudgetPerDuplicate = properties.retrySearchBudgetPerDuplicate,
+                    ),
                     toolRegistry = activeRuntime.toolRegistry,
                     agentConfig = activeRuntime.agentConfig,
                 ) {
@@ -217,16 +312,58 @@ class KoogChickenFactsAgent(
                 }
             agent.run(properties.prompt)
         } catch (ex: Exception) {
+            dependenciesReady = false
+            deferInitializationRetry()
             log.error(ex) { "Koog agent failed to produce chicken facts." }
-            null
+            throw ex
         }
     }
 
     @PreDestroy
+    @Synchronized
     fun shutdown() {
-        runtime?.promptExecutor?.close()
-        runtime?.toolsHttpClient?.close()
-        runtime?.ollamaHttpClient?.close()
+        shuttingDown = true
+        val activeRuntime = runtime
+        runtime = null
+        dependenciesReady = false
+        saveTool = null
+        searchTool = null
+        activeRuntime?.promptExecutor?.close()
+        activeRuntime?.toolsHttpClient?.close()
+        activeRuntime?.ollamaHttpClient?.close()
+    }
+
+    private fun deferInitializationRetry() {
+        nextInitializationAttemptMillis = System.currentTimeMillis() + DEPENDENCY_RETRY_DELAY_MILLIS
+    }
+
+    @Synchronized
+    private fun revalidateDependencies(activeRuntime: AgentRuntime) {
+        if (dependenciesReady || shuttingDown || System.currentTimeMillis() < nextInitializationAttemptMillis) {
+            return
+        }
+        dependenciesReady = try {
+            runBlocking {
+                dependencyValidator.requireGeneration(activeRuntime.ollamaHttpClient, properties.model)
+                dependencyValidator.requireWebSearch(activeRuntime.toolsHttpClient)
+            }
+            true
+        } catch (ex: Exception) {
+            deferInitializationRetry()
+            log.error(ex) { "Koog chicken facts dependencies are still unavailable" }
+            false
+        }
+    }
+
+    private fun ollamaTimeoutConfig() =
+        ConnectionTimeoutConfig(
+            requestTimeoutMillis = ollamaProperties.llmRequestTimeout.toMillis(),
+            connectTimeoutMillis = 10_000,
+            socketTimeoutMillis = ollamaProperties.llmRequestTimeout.toMillis(),
+        )
+
+    companion object {
+        private const val DEPENDENCY_RETRY_DELAY_MILLIS = 60_000L
     }
 }
 
@@ -244,6 +381,7 @@ class SaveChickenFactTool(
     private val log = KotlinLogging.logger {}
 
     @Serializable
+    @JsonIgnoreUnknownKeys
     data class Args(
         @property:LLMDescription("The chicken fact in plain text (no markdown formatting)")
         val fact: String,
@@ -260,7 +398,7 @@ class SaveChickenFactTool(
 
     override suspend fun execute(args: Args): String {
         log.info { "Saving chicken fact with URL: ${args.sourceUrl}" }
-        val duplicateCheck = duplicateCheckService.checkFactForDuplicate(args.fact)
+        val duplicateCheck = duplicateCheckService.checkFactForDuplicate(args.fact, args.sourceUrl)
         return jsonCodec.encodeToString(
             Result.serializer(),
             Result(

@@ -7,6 +7,7 @@ import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class RequestLoggingComponentsTests {
 
@@ -44,6 +45,19 @@ class RequestLoggingComponentsTests {
         assertNotNull(generatedId)
 
         assertEquals(generatedId, requestLoggingService.lastEntry?.requestId)
+    }
+
+    @Test
+    fun `interceptor excludes health probes from sheet logging`() {
+        val requestLoggingService = CapturingRequestLoggingService()
+        val interceptor = RequestLoggingInterceptor(requestLoggingService)
+        val request = MockHttpServletRequest("GET", "/readyz")
+        val response = MockHttpServletResponse()
+
+        interceptor.preHandle(request, response, Any())
+        interceptor.afterCompletion(request, response, Any(), null)
+
+        assertNull(requestLoggingService.lastEntry)
     }
 }
 

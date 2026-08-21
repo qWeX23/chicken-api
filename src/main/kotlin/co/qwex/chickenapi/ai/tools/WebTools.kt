@@ -3,15 +3,20 @@ package co.qwex.chickenapi.ai.tools
 import ai.koog.agents.core.tools.SimpleTool
 import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.serialization.typeToken
+import co.qwex.chickenapi.config.WebToolsProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.request.get
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.isSuccess
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonIgnoreUnknownKeys
 import mu.KotlinLogging
+import java.net.URI
 
 private val log = KotlinLogging.logger {}
 private val json = Json { ignoreUnknownKeys = true }
@@ -24,6 +29,9 @@ class WebSearchTool(
     private val httpClient: HttpClient?,
     private val baseUrl: String,
     private val defaultMaxResults: Int,
+    private val provider: WebToolsProvider = WebToolsProvider.OLLAMA,
+    private val excludedDomains: Set<String> = emptySet(),
+    private val preferredDomains: Set<String> = emptySet(),
 ) : SimpleTool<WebSearchTool.Args>(
         argsType = typeToken<Args>(),
         name = "web_search",
@@ -31,6 +39,7 @@ class WebSearchTool(
     ) {
 
     @Serializable
+    @JsonIgnoreUnknownKeys
     data class Args(
         @property:LLMDescription("The search query to find information on the web")
         val query: String,
@@ -44,10 +53,19 @@ class WebSearchTool(
 
         log.info { "Executing web_search with query: '${args.query}', maxResults: $resolvedMax" }
 
-        val response =
-            client.post("$baseUrl/api/web_search") {
-                setBody(WebSearchRequest(query = args.query, maxResults = resolvedMax))
-            }
+        val response = when (provider) {
+            WebToolsProvider.OLLAMA ->
+                client.post("$baseUrl/api/web_search") {
+                    setBody(WebSearchRequest(query = args.query, maxResults = resolvedMax))
+                }
+            WebToolsProvider.SEARXNG ->
+                client.get("$baseUrl/search") {
+                    parameter("q", args.query)
+                    parameter("format", "json")
+                    parameter("language", "en")
+                    parameter("safesearch", 1)
+                }
+        }
 
         if (!response.status.isSuccess()) {
             val message = "web_search failed with status ${response.status}"
@@ -58,7 +76,11 @@ class WebSearchTool(
         val result: WebSearchResponse = response.body()
         log.info { "web_search returned ${result.results.size} results" }
 
-        val boundedResults = result.results.mapIndexed { index, searchResult ->
+        val boundedResults = result.results
+            .filterNot { searchResult -> isExcludedUrl(searchResult.url, excludedDomains) }
+            .sortedByDescending { searchResult -> isPreferredUrl(searchResult.url, preferredDomains) }
+            .take(resolvedMax)
+            .mapIndexed { index, searchResult ->
             buildString {
                 appendLine("Result ${index + 1}:")
                 appendLine("Title: ${searchResult.title ?: "No title"}")
@@ -69,7 +91,7 @@ class WebSearchTool(
 
         return buildString {
             appendLine("Search results for: ${args.query}")
-            appendLine("Summarize these results before deciding whether to call web_fetch or save your findings.")
+            appendLine("Use these results to continue the workflow or save your findings.")
             appendLine()
             boundedResults.forEach { resultText ->
                 appendLine(resultText)
@@ -81,6 +103,25 @@ class WebSearchTool(
     companion object {
         internal fun clampMaxResults(requested: Int?, defaultMaxResults: Int): Int =
             (requested ?: defaultMaxResults).coerceIn(1, 5)
+
+        internal fun isExcludedUrl(url: String?, excludedDomains: Set<String>): Boolean {
+            val host = runCatching { URI(url).host?.lowercase() }.getOrNull() ?: return false
+            return excludedDomains.any { excludedDomain ->
+                val domain = excludedDomain.lowercase().trim().removePrefix(".")
+                domain.isNotEmpty() && (host == domain || host.endsWith(".$domain"))
+            }
+        }
+
+        internal fun isPreferredUrl(url: String?, preferredDomains: Set<String>): Boolean {
+            if (preferredDomains.isEmpty()) {
+                return false
+            }
+            val host = runCatching { URI(url).host?.lowercase() }.getOrNull() ?: return false
+            return preferredDomains.any { preferredDomain ->
+                val domain = preferredDomain.lowercase().trim().removePrefix(".")
+                domain.isNotEmpty() && (host == domain || host.endsWith(".$domain"))
+            }
+        }
     }
 }
 
@@ -98,6 +139,7 @@ class WebFetchTool(
     ) {
 
     @Serializable
+    @JsonIgnoreUnknownKeys
     data class Args(
         @property:LLMDescription("The URL to fetch and read in detail")
         val url: String,

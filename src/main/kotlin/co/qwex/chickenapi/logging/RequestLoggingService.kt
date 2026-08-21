@@ -20,7 +20,7 @@ open class RequestLoggingService(
     @Value("\${google.sheets.db.spreadsheetId}") private val spreadsheetId: String,
     @Value("\${google.sheets.db.requestLogSheetName:$DEFAULT_REQUEST_LOG_SHEET}") private val sheetName: String,
 ) {
-    @Async
+    @Async("requestLoggingExecutor")
     open fun recordRequest(entry: RequestLogEntry) {
         try {
             val valueRange = ValueRange().setValues(
@@ -40,7 +40,7 @@ open class RequestLoggingService(
 
             sheets.spreadsheets().values()
                 .append(spreadsheetId, "'$sheetName'!$SHEET_RANGE", valueRange)
-                .setValueInputOption("USER_ENTERED")
+                .setValueInputOption("RAW")
                 .execute()
         } catch (ex: Exception) {
             log.warn(ex) { "Failed to append request log entry" }

@@ -1,7 +1,9 @@
 package co.qwex.chickenapi.service
 
 import co.qwex.chickenapi.ai.KoogBreedResearchAgent
+import co.qwex.chickenapi.config.BreedResearchAgentProperties
 import co.qwex.chickenapi.repository.BreedResearchRepository
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -15,7 +17,7 @@ class BreedResearcherScheduledTaskServiceTests {
     fun `parseSaveResult parses pretty printed save JSON`() {
         val agent = mock(KoogBreedResearchAgent::class.java)
         val researchRepository = mock(BreedResearchRepository::class.java)
-        val service = BreedResearcherScheduledTaskService(agent, researchRepository)
+        val service = createService(agent, researchRepository)
 
         val response =
             """
@@ -49,7 +51,7 @@ class BreedResearcherScheduledTaskServiceTests {
     fun `parseSaveResult extracts save JSON when embedded in surrounding text`() {
         val agent = mock(KoogBreedResearchAgent::class.java)
         val researchRepository = mock(BreedResearchRepository::class.java)
-        val service = BreedResearcherScheduledTaskService(agent, researchRepository)
+        val service = createService(agent, researchRepository)
 
         val response =
             """
@@ -85,7 +87,7 @@ class BreedResearcherScheduledTaskServiceTests {
     fun `parseSaveResult returns null when response has no save result JSON`() {
         val agent = mock(KoogBreedResearchAgent::class.java)
         val researchRepository = mock(BreedResearchRepository::class.java)
-        val service = BreedResearcherScheduledTaskService(agent, researchRepository)
+        val service = createService(agent, researchRepository)
 
         val parsed = invokeParseSaveResult(service, "I researched a breed but did not save it.")
         assertNull(parsed)
@@ -100,4 +102,15 @@ class BreedResearcherScheduledTaskServiceTests {
         @Suppress("UNCHECKED_CAST")
         return method.invoke(service, response) as SaveBreedResearchResult?
     }
+
+    private fun createService(
+        agent: KoogBreedResearchAgent,
+        repository: BreedResearchRepository,
+    ): BreedResearcherScheduledTaskService =
+        BreedResearcherScheduledTaskService(
+            koogBreedResearchAgent = agent,
+            breedResearchRepository = repository,
+            properties = BreedResearchAgentProperties(),
+            scheduledTaskMetrics = ScheduledTaskMetrics(SimpleMeterRegistry()),
+        )
 }

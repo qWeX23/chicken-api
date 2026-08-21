@@ -17,6 +17,9 @@ interface ChickenFactsRepository : DataRepository<ChickenFactsRecord, String> {
      */
     fun fetchAllSuccessfulChickenFacts(): List<ChickenFactsRecord>
 
+    /** Returns the most recently completed run, regardless of outcome. */
+    fun fetchLatestRun(): ChickenFactsRecord?
+
     override fun findAll(): List<ChickenFactsRecord> = fetchAllSuccessfulChickenFacts()
 
     override fun findById(id: String): ChickenFactsRecord? {

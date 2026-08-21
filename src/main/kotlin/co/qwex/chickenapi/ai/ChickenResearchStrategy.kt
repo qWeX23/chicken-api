@@ -8,16 +8,21 @@ import ai.koog.agents.core.dsl.extension.ReceivedToolResults
 import ai.koog.agents.core.dsl.extension.ToolCalls
 import ai.koog.agents.core.dsl.extension.nodeExecuteTools
 import ai.koog.agents.core.dsl.extension.nodeLLMRequest
-import ai.koog.agents.core.dsl.extension.nodeLLMRequestOnlyCallingTools
 import ai.koog.agents.core.dsl.extension.nodeLLMSendToolResults
-import ai.koog.agents.core.dsl.extension.onTextMessage
 import ai.koog.agents.core.dsl.extension.onToolCalls
+import ai.koog.agents.core.environment.ToolResultKind
+import ai.koog.agents.core.tools.ToolBase
+import ai.koog.prompt.message.Message
 import kotlinx.serialization.json.Json
 import mu.KotlinLogging
-import ai.koog.prompt.message.Message
 
 private val log = KotlinLogging.logger {}
 private val json = Json { ignoreUnknownKeys = true }
+private val duplicateResearchAngles = listOf(
+    "vocal communication between hens and chicks, excluding face recognition",
+    "feeding, dust-bathing, movement, or sleep behavior, excluding ultraviolet vision",
+    "domestication archaeology, cultural history, records, or an unusual breed-specific trait",
+)
 
 /**
  * Custom chicken research strategy that enforces:
@@ -26,20 +31,70 @@ private val json = Json { ignoreUnknownKeys = true }
  * - Duplicate hits restart research with feedback up to maxDuplicateRetries
  */
 fun chickenResearchStrategy(
+    saveTool: SaveChickenFactTool,
+    researchTool: ToolBase<*, *>,
     maxToolCalls: Int = 4,
     maxDuplicateRetries: Int = 3,
+    retrySearchBudgetPerDuplicate: Int = 3,
 ): AIAgentGraphStrategy<String, String> = strategy<String, String>("chicken_research") {
     var toolCallCount = 0
     var duplicateRetries = 0
+    var noToolResponseRetries = 0
+    var forcedSaveRetries = 0
+    var duplicateResearchRetries = 0
+    var duplicateResearchRequired = false
     var savedFactJson: String? = null
     var duplicateFeedback: String? = null
+    var coveredTopics: List<String> = emptyList()
+    var retrySearchBudget = 0
+
+    val saveFactPrompt =
+        """
+        You have gathered enough information. Call save_chicken_fact now with:
+        - fact: A clear, interesting chicken fact based on your research
+        - sourceUrl: The primary source URL that supports the fact
+
+        Do not describe the tool call. Call the tool directly.
+        """.trimIndent()
+    val retrySaveFactPrompt =
+        """
+        Your previous response did not call save_chicken_fact. Web search is no longer available.
+        Choose the best supported fact and exact source URL already present in the conversation,
+        then call save_chicken_fact directly. Do not request another tool or describe the call.
+        """.trimIndent()
+    val continueWithToolsPrompt =
+        """
+        Continue the workflow using only the available tools. Call web_search for more evidence or
+        save_chicken_fact when the fact and primary source URL are ready. Do not describe or imitate a tool call.
+        """.trimIndent()
+    val duplicateResearchPrompt = { angle: String ->
+        """
+            The proposed fact is too similar to an existing fact already in the database.
+
+            Duplicate check details:
+            ${duplicateFeedback.orEmpty()}
+
+            Topics already covered by existing facts in the database:
+            ${coveredTopics.joinToString("\n- ", prefix = "- ") { it }}
+
+            Start over with this required research angle: $angle.
+            Call ${researchTool.name} now with a targeted query for a genuinely different fact.
+            Do not save or paraphrase any fact listed in the duplicate details, and do not reuse any of the covered topics.
+        """.trimIndent()
+    }
 
     val setupRun by subgraph<String, String>(name = "setup_run") {
         val resetToolCounter by node<String, String>("reset_tool_counter") { input ->
             toolCallCount = 0
             duplicateRetries = 0
+            noToolResponseRetries = 0
+            forcedSaveRetries = 0
+            duplicateResearchRetries = 0
+            duplicateResearchRequired = false
             savedFactJson = null
             duplicateFeedback = null
+            coveredTopics = emptyList()
+            retrySearchBudget = 0
             log.info { "Starting new chicken research run, counters reset" }
             input
         }
@@ -62,50 +117,78 @@ fun chickenResearchStrategy(
         edge(executeTool forwardTo nodeFinish transformed { it })
     }
 
-    val toolResultTurn by subgraph<ReceivedToolResults, Message.Assistant>(name = "summarize_tool_result_turn") {
-        val captureToolResult by node<ReceivedToolResults, ReceivedToolResults>("capture_tool_result") { toolResults ->
-            toolResults.toolResults.forEach { toolResult ->
-                val result = toolResult.result.toString()
-                val parsedResult = runCatching {
-                    json.decodeFromString(SaveChickenFactTool.Result.serializer(), result)
-                }.getOrNull()
-
-                if (parsedResult != null) {
-                    if (parsedResult.duplicateCheck.hasHit) {
-                        duplicateRetries += 1
-                        duplicateFeedback = json.encodeToString(FactDuplicateCheckResult.serializer(), parsedResult.duplicateCheck)
-                        savedFactJson = null
-                        log.warn {
-                            "Detected duplicate chicken fact candidate (retry $duplicateRetries/$maxDuplicateRetries), requesting a new fact."
-                        }
-                    } else {
-                        duplicateFeedback = null
-                        savedFactJson = json.encodeToString(
-                            SavedChickenFactResult.serializer(),
-                            SavedChickenFactResult(
-                                fact = parsedResult.fact,
-                                sourceUrl = parsedResult.sourceUrl,
-                            ),
-                        )
-                        log.info { "Captured save_chicken_fact result with no duplicate hit" }
-                    }
-                }
-            }
-            toolResults
+    val captureToolResults by node<ReceivedToolResults, ReceivedToolResults>("capture_tool_results") { toolResults ->
+        toolResults.toolResults.firstOrNull { it.resultKind !is ToolResultKind.Success }?.let { failedResult ->
+            throw IllegalStateException("Tool ${failedResult.tool} failed")
         }
+        toolResults.toolResults.forEach { toolResult ->
+            if (toolResult.tool != saveTool.name || toolResult.resultKind !is ToolResultKind.Success) {
+                return@forEach
+            }
+            val parsedResult = runCatching {
+                json.decodeFromString(SaveChickenFactTool.Result.serializer(), toolResult.output)
+            }.getOrNull()
+            if (parsedResult == null) {
+                log.warn { "Ignoring malformed save_chicken_fact result" }
+                return@forEach
+            }
 
+            if (parsedResult.duplicateCheck.hasHit) {
+                duplicateRetries += 1
+                toolCallCount = 0
+                forcedSaveRetries = 0
+                duplicateResearchRetries = 0
+                duplicateResearchRequired = duplicateRetries <= maxDuplicateRetries
+                duplicateFeedback = json.encodeToString(FactDuplicateCheckResult.serializer(), parsedResult.duplicateCheck)
+                coveredTopics = parsedResult.duplicateCheck.coveredTopics
+                retrySearchBudget = retrySearchBudgetPerDuplicate
+                savedFactJson = null
+                log.warn {
+                    "Detected duplicate chicken fact candidate (retry $duplicateRetries/$maxDuplicateRetries), requesting a new fact."
+                }
+            } else {
+                duplicateResearchRequired = false
+                duplicateFeedback = null
+                coveredTopics = emptyList()
+                retrySearchBudget = 0
+                savedFactJson = json.encodeToString(
+                    SavedChickenFactResult.serializer(),
+                    SavedChickenFactResult(
+                        fact = parsedResult.fact,
+                        sourceUrl = parsedResult.sourceUrl,
+                    ),
+                )
+                log.info { "Captured save_chicken_fact result with no duplicate hit" }
+            }
+        }
+        toolResults
+    }
+
+    val toolResultTurn by subgraph<ReceivedToolResults, Message.Assistant>(name = "summarize_tool_result_turn") {
         val sendToolResult by nodeLLMSendToolResults(name = "summarize_tool_result")
 
-        edge(nodeStart forwardTo captureToolResult)
-        edge(captureToolResult forwardTo sendToolResult)
+        edge(nodeStart forwardTo sendToolResult)
         edge(sendToolResult forwardTo nodeFinish transformed { it })
     }
 
-    val requestSaveFactTurn by subgraph<String, Message.Assistant>(name = "request_save_fact_turn") {
-        val requestSaveFact by nodeLLMRequestOnlyCallingTools(name = "request_save_fact")
+    val requestSaveFactTurn by subgraph<String, Message.Assistant>(
+        name = "request_save_fact_turn",
+        tools = listOf(saveTool),
+    ) {
+        val requestSaveFact by nodeLLMRequest(name = "request_save_fact")
 
         edge(nodeStart forwardTo requestSaveFact)
         edge(requestSaveFact forwardTo nodeFinish transformed { it })
+    }
+
+    val restartResearchTurn by subgraph<String, Message.Assistant>(
+        name = "restart_research_turn",
+        tools = listOf(researchTool),
+    ) {
+        val restartResearch by nodeLLMRequest(name = "restart_research")
+
+        edge(nodeStart forwardTo restartResearch)
+        edge(restartResearch forwardTo nodeFinish transformed { it })
     }
 
     val returnResult by node<String, String>("return_result") { _ ->
@@ -126,9 +209,10 @@ fun chickenResearchStrategy(
     edge(
         llmTurn forwardTo executeToolsTurn onToolCalls { true } onCondition { pendingToolCalls ->
             val requestedToolCalls = pendingToolCalls.toolCalls.size
-            val canCallTool = toolCallCount + requestedToolCalls <= maxToolCalls
+            val canCallTool = requestedToolCalls == 1 && toolCallCount + requestedToolCalls <= maxToolCalls
             if (canCallTool) {
                 toolCallCount += requestedToolCalls
+                noToolResponseRetries = 0
             }
             log.info {
                 "Tool call batch of $requestedToolCalls requested (used: $toolCallCount/$maxToolCalls), will execute: $canCallTool"
@@ -138,81 +222,110 @@ fun chickenResearchStrategy(
     )
 
     edge(
-        llmTurn forwardTo requestSaveFactTurn onToolCalls { true } onCondition { pendingToolCalls ->
+        llmTurn forwardTo executeToolsTurn onToolCalls { true } onCondition { pendingToolCalls ->
             val requestedToolCalls = pendingToolCalls.toolCalls.size
-            val exceedsMax = toolCallCount + requestedToolCalls > maxToolCalls
-            if (exceedsMax) {
+            val allowTerminalSave =
+                requestedToolCalls == 1 &&
+                    toolCallCount + requestedToolCalls > maxToolCalls &&
+                    pendingToolCalls.toolCalls.single().tool == saveTool.name
+            if (allowTerminalSave) {
                 log.warn {
-                    "Tool call limit would be exceeded (${toolCallCount + requestedToolCalls} > $maxToolCalls), forcing save_chicken_fact"
+                    "Tool call limit reached; allowing terminal save_chicken_fact"
                 }
             }
-            exceedsMax
-        } transformed {
-            """
-            You have gathered enough information. Now synthesize your research into a single, compelling chicken fact.
-
-            Call the save_chicken_fact tool to record your finding with:
-            - fact: A clear, interesting statement about chickens based on your research
-            - sourceUrl: The most authoritative URL you used as the primary source
-
-            This tool will save your research result in a structured format for later use.
-            """.trimIndent()
+            allowTerminalSave
         },
     )
 
-    edge(llmTurn forwardTo returnResult onTextMessage { true })
-    edge(returnResult forwardTo nodeFinish)
-
-    edge(executeToolsTurn forwardTo toolResultTurn)
+    edge(
+        llmTurn forwardTo requestSaveFactTurn onToolCalls { true } onCondition { pendingToolCalls ->
+            val requestedToolCalls = pendingToolCalls.toolCalls.size
+            val rejectOverBudgetCall =
+                requestedToolCalls == 1 &&
+                    toolCallCount + requestedToolCalls > maxToolCalls &&
+                    pendingToolCalls.toolCalls.single().tool != saveTool.name
+            if (rejectOverBudgetCall) {
+                log.error { "Tool call limit reached; rejecting non-save tool ${pendingToolCalls.toolCalls.single().tool}" }
+            }
+            rejectOverBudgetCall
+        } transformed { saveFactPrompt },
+    )
 
     edge(
-        toolResultTurn forwardTo returnResult onTextMessage { true } onCondition { _ ->
-            savedFactJson != null || (duplicateFeedback != null && duplicateRetries > maxDuplicateRetries)
+        llmTurn forwardTo returnResult onToolCalls { true } onCondition { pendingToolCalls ->
+            val invalidBatch = pendingToolCalls.toolCalls.size != 1
+            if (invalidBatch) {
+                log.error { "LLM requested ${pendingToolCalls.toolCalls.size} tools in one turn; terminating the run" }
+            }
+            invalidBatch
         } transformed { "" },
     )
 
     edge(
-        toolResultTurn forwardTo llmTurn onTextMessage { true } onCondition { _ ->
-            duplicateFeedback != null && duplicateRetries <= maxDuplicateRetries
-        } transformed {
-            """
-            The proposed fact is too similar to an existing fact already in the database.
-
-            Duplicate check details:
-            ${duplicateFeedback.orEmpty()}
-
-            You must produce a genuinely different chicken fact.
-            - Do not paraphrase the same core claim.
-            - Choose a distinct topic, behavior, historical event, or trivia angle.
-            - You may continue researching with web_search/web_fetch if needed.
-            - When ready, call save_chicken_fact again with the new fact and source URL.
-            """.trimIndent()
-        },
+        llmTurn forwardTo llmTurn onCondition { _ ->
+            val canRetry = noToolResponseRetries == 0 && toolCallCount < maxToolCalls
+            if (canRetry) {
+                noToolResponseRetries += 1
+                log.warn { "LLM response contained no executable tool call; requesting one corrective turn" }
+            }
+            canRetry
+        } transformed { continueWithToolsPrompt },
     )
+    edge(llmTurn forwardTo requestSaveFactTurn onCondition { _ -> true } transformed { saveFactPrompt })
+    edge(returnResult forwardTo nodeFinish)
+
+    edge(executeToolsTurn forwardTo captureToolResults)
 
     edge(
-        toolResultTurn forwardTo requestSaveFactTurn onTextMessage { true } onCondition { _ ->
-            savedFactJson == null && duplicateFeedback == null && toolCallCount >= maxToolCalls
-        } transformed {
-            """
-            You have reached the tool call limit. Use the summarized research above and call save_chicken_fact now.
-
-            Call the save_chicken_fact tool with:
-            - fact: A clear, interesting chicken fact based on your research
-            - sourceUrl: The primary source URL that supports the fact
-            """.trimIndent()
-        },
+        captureToolResults forwardTo returnResult onCondition { _ ->
+            savedFactJson != null || (duplicateFeedback != null && duplicateRetries > maxDuplicateRetries)
+        } transformed { "" },
     )
+    edge(
+        captureToolResults forwardTo restartResearchTurn onCondition { _ ->
+            duplicateResearchRequired
+        } transformed { duplicateResearchPrompt(duplicateResearchAngles[(duplicateRetries - 1).coerceAtLeast(0) % duplicateResearchAngles.size]) },
+    )
+    edge(captureToolResults forwardTo toolResultTurn onCondition { _ -> !duplicateResearchRequired })
+
+    edge(
+        (restartResearchTurn forwardTo executeToolsTurn)
+            .onToolCalls { true }
+            .onCondition { pendingToolCalls ->
+                val canResearch =
+                    pendingToolCalls.toolCalls.size == 1 &&
+                        pendingToolCalls.toolCalls.single().tool == researchTool.name
+                if (canResearch) {
+                    toolCallCount = (maxToolCalls - retrySearchBudget).coerceAtLeast(0) + 1
+                    noToolResponseRetries = 0
+                    duplicateResearchRequired = false
+                }
+                canResearch
+            },
+    )
+    edge(
+        restartResearchTurn forwardTo restartResearchTurn onCondition { _ ->
+            val canRetry = duplicateResearchRetries == 0
+            if (canRetry) {
+                duplicateResearchRetries += 1
+                log.warn { "Duplicate-research response did not call ${researchTool.name}; retrying once" }
+            }
+            canRetry
+        } transformed { duplicateResearchPrompt(duplicateResearchAngles[(duplicateRetries - 1).coerceAtLeast(0) % duplicateResearchAngles.size]) },
+    )
+    edge(restartResearchTurn forwardTo returnResult onCondition { _ -> true } transformed { "" })
 
     edge(
         toolResultTurn forwardTo executeToolsTurn onToolCalls { true } onCondition { pendingToolCalls ->
-            if (savedFactJson != null || duplicateFeedback != null) {
+            if (savedFactJson != null) {
                 return@onCondition false
             }
             val requestedToolCalls = pendingToolCalls.toolCalls.size
-            val canCallTool = toolCallCount + requestedToolCalls <= maxToolCalls
+            val canCallTool = requestedToolCalls == 1 && toolCallCount + requestedToolCalls <= maxToolCalls
             if (canCallTool) {
                 toolCallCount += requestedToolCalls
+                noToolResponseRetries = 0
+                duplicateFeedback = null
             }
             log.info {
                 "Tool call batch of $requestedToolCalls requested after tool result (used: $toolCallCount/$maxToolCalls), will execute: $canCallTool"
@@ -222,33 +335,78 @@ fun chickenResearchStrategy(
     )
 
     edge(
-        toolResultTurn forwardTo requestSaveFactTurn onToolCalls { true } onCondition { pendingToolCalls ->
-            if (savedFactJson != null || duplicateFeedback != null) {
+        toolResultTurn forwardTo executeToolsTurn onToolCalls { true } onCondition { pendingToolCalls ->
+            if (savedFactJson != null) {
                 return@onCondition false
             }
             val requestedToolCalls = pendingToolCalls.toolCalls.size
-            val exceedsMax = toolCallCount + requestedToolCalls > maxToolCalls
-            if (exceedsMax) {
+            val allowTerminalSave =
+                requestedToolCalls == 1 &&
+                    toolCallCount + requestedToolCalls > maxToolCalls &&
+                    pendingToolCalls.toolCalls.single().tool == saveTool.name
+            if (allowTerminalSave) {
                 log.warn {
-                    "Tool call limit would be exceeded after tool result (${toolCallCount + requestedToolCalls} > $maxToolCalls), forcing save_chicken_fact"
+                    "Tool call limit reached after tool result; allowing terminal save_chicken_fact"
                 }
             }
-            exceedsMax
-        } transformed {
-            """
-            You have gathered sufficient information from your research. It's time to finalize your findings.
-
-            Call the save_chicken_fact tool to document your discovery with:
-            - fact: Your most interesting chicken fact synthesized from the sources you've reviewed
-            - sourceUrl: The primary URL that best supports this fact
-
-            The save_chicken_fact tool stores your research in a structured format that preserves both the fact and its citation.
-            """.trimIndent()
+            allowTerminalSave
         },
     )
 
-    edge(requestSaveFactTurn forwardTo executeToolsTurn onToolCalls { true })
-    edge(requestSaveFactTurn forwardTo returnResult onTextMessage { true })
+    edge(
+        toolResultTurn forwardTo requestSaveFactTurn onToolCalls { true } onCondition { pendingToolCalls ->
+            val requestedToolCalls = pendingToolCalls.toolCalls.size
+            val rejectOverBudgetCall =
+                requestedToolCalls == 1 &&
+                    toolCallCount + requestedToolCalls > maxToolCalls &&
+                    pendingToolCalls.toolCalls.single().tool != saveTool.name
+            if (rejectOverBudgetCall) {
+                log.error { "Tool call limit reached; rejecting non-save tool ${pendingToolCalls.toolCalls.single().tool}" }
+            }
+            rejectOverBudgetCall
+        } transformed { saveFactPrompt },
+    )
+
+    edge(
+        toolResultTurn forwardTo returnResult onToolCalls { true } onCondition { pendingToolCalls ->
+            val invalidBatch = pendingToolCalls.toolCalls.size != 1
+            if (invalidBatch) {
+                log.error { "LLM requested ${pendingToolCalls.toolCalls.size} tools in one turn; terminating the run" }
+            }
+            invalidBatch
+        } transformed { "" },
+    )
+
+    edge(
+        toolResultTurn forwardTo llmTurn onCondition { _ ->
+            val canRetry = duplicateFeedback == null && noToolResponseRetries == 0 && toolCallCount < maxToolCalls
+            if (canRetry) {
+                noToolResponseRetries += 1
+                log.warn { "Tool-result response contained no executable tool call; requesting one corrective turn" }
+            }
+            canRetry
+        } transformed { continueWithToolsPrompt },
+    )
+    edge(toolResultTurn forwardTo requestSaveFactTurn onCondition { _ -> true } transformed { saveFactPrompt })
+
+    edge(
+        (requestSaveFactTurn forwardTo executeToolsTurn)
+            .onToolCalls { true }
+            .onCondition { pendingToolCalls ->
+                pendingToolCalls.toolCalls.size == 1 && pendingToolCalls.toolCalls.single().tool == saveTool.name
+            },
+    )
+    edge(
+        requestSaveFactTurn forwardTo requestSaveFactTurn onCondition { _ ->
+            val canRetry = forcedSaveRetries == 0
+            if (canRetry) {
+                forcedSaveRetries += 1
+                log.warn { "Forced save response did not call save_chicken_fact; retrying once" }
+            }
+            canRetry
+        } transformed { retrySaveFactPrompt },
+    )
+    edge(requestSaveFactTurn forwardTo returnResult onCondition { _ -> true } transformed { "" })
 }
 
 @kotlinx.serialization.Serializable

@@ -45,7 +45,7 @@ class GoogleSheetsBreedRepositoryTests {
 
     @Test
     fun `update writes row with updated timestamp`() {
-        gateway.seed(BreedsTable, emptyList())
+        gateway.seed(BreedsTable, listOf(listOf(1, "Silkie", "China")))
         val updatedBreed = Breed(
             id = 1,
             name = "Silkie",
@@ -68,5 +68,23 @@ class GoogleSheetsBreedRepositoryTests {
         assertEquals("Silkie", row[1])
         assertNotNull(runCatching { Instant.parse(row[9].toString()) }.getOrNull())
         assertEquals("[\"https://example.com\"]", row[10])
+    }
+
+    @Test
+    fun `lookup and update use the row containing the requested id`() {
+        gateway.seed(
+            BreedsTable,
+            listOf(
+                listOf(9, "Orpington", "UK"),
+                listOf(1, "Silkie", "China"),
+            ),
+        )
+
+        val silkie = repository.getBreedById(1)
+        assertNotNull(silkie)
+        repository.update(silkie.copy(description = "Updated Silkie"))
+
+        assertEquals(9, gateway.getValues(BreedsTable.rowRange(2)).first()[0])
+        assertEquals("Updated Silkie", gateway.getValues(BreedsTable.rowRange(3)).first()[6])
     }
 }

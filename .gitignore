@@ -65,3 +65,12 @@ application-local.properties
 agent-traces.log
 agent-traces-*.log
 /agenttraces
+
+### Local secrets ###
+.env
+.env.*
+!.env.example
+!.env.*.example
+/google-credentials.json
+/secrets/*
+!/secrets/.gitkeep

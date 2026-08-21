@@ -38,52 +38,29 @@ class ChickenFactsSheetRepository(
             updatedAt.toString(),
         )
 
-        sheetsGateway.appendValues(table.appendRange(), listOf(row), ValueInputOption.USER_ENTERED)
+        sheetsGateway.appendValues(table.appendRange(), listOf(row), ValueInputOption.RAW)
         log.debug { "Created chicken facts run ${entity.runId} with outcome ${entity.outcome}" }
     }
 
     override fun fetchLatestChickenFact(): ChickenFactsRecord? {
-        sheetsGateway.ensureTableExists(table)
-        val rows = try {
-            sheetsGateway.getValues(table.dataRange()).filter { it.isNotEmpty() }
-        } catch (ex: Exception) {
-            log.error(ex) { "Failed to read chicken facts sheet." }
-            return null
-        }
-
-        if (rows.isEmpty()) {
-            log.debug { "Chicken facts sheet returned no rows." }
-            return null
-        }
-
-        for (row in rows.asReversed()) {
-            val record = table.mapper.map(row)
-            if (record != null && record.outcome == AgentRunOutcome.SUCCESS && !record.fact.isNullOrBlank()) {
-                return record
-            }
-        }
-
-        log.debug { "No successful chicken fact runs found in sheet." }
-        return null
+        return fetchRecords()
+            .filter { it.outcome == AgentRunOutcome.SUCCESS && !it.fact.isNullOrBlank() }
+            .maxByOrNull { it.completedAt }
     }
 
     override fun fetchAllSuccessfulChickenFacts(): List<ChickenFactsRecord> {
-        sheetsGateway.ensureTableExists(table)
-        val rows = try {
-            sheetsGateway.getValues(table.dataRange()).filter { it.isNotEmpty() }
-        } catch (ex: Exception) {
-            log.error(ex) { "Failed to read chicken facts sheet." }
-            return emptyList()
-        }
-
-        if (rows.isEmpty()) {
-            log.debug { "Chicken facts sheet returned no rows." }
-            return emptyList()
-        }
-
-        return rows
-            .mapNotNull(table.mapper::map)
+        return fetchRecords()
             .filter { it.outcome == AgentRunOutcome.SUCCESS && !it.fact.isNullOrBlank() }
             .sortedByDescending { it.completedAt }
+    }
+
+    override fun fetchLatestRun(): ChickenFactsRecord? =
+        fetchRecords().maxByOrNull { it.completedAt }
+
+    private fun fetchRecords(): List<ChickenFactsRecord> {
+        sheetsGateway.ensureTableExists(table)
+        return sheetsGateway.getValues(table.dataRange())
+            .filter { it.isNotEmpty() }
+            .mapNotNull(table.mapper::map)
     }
 }

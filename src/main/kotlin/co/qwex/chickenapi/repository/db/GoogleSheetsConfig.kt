@@ -1,6 +1,7 @@
 package co.qwex.chickenapi.repository.db
 
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport
+import com.google.api.client.http.HttpRequestInitializer
 import com.google.api.client.json.jackson2.JacksonFactory
 import com.google.api.services.sheets.v4.Sheets
 import com.google.auth.http.HttpCredentialsAdapter
@@ -31,12 +32,19 @@ class GoogleSheetsConfig {
         val credentials = GoogleCredentials
             .getApplicationDefault()
             .createScoped(listOf("https://www.googleapis.com/auth/spreadsheets"))
+        val credentialsAdapter = HttpCredentialsAdapter(credentials)
+        val requestInitializer = HttpRequestInitializer { request ->
+            credentialsAdapter.initialize(request)
+            request.connectTimeout = 10_000
+            request.readTimeout = 60_000
+            request.numberOfRetries = 2
+        }
 
         // 2. Build the Sheets client
         return Sheets.Builder(
             GoogleNetHttpTransport.newTrustedTransport(),
             JSON_FACTORY,
-            HttpCredentialsAdapter(credentials),
+            requestInitializer,
         )
             .setApplicationName(APPLICATION_NAME)
             .build()

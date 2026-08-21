@@ -36,52 +36,29 @@ class BreedResearchSheetRepository(
             entity.errorMessage.orEmpty(),
         )
 
-        sheetsGateway.appendValues(table.appendRange(), listOf(row), ValueInputOption.USER_ENTERED)
+        sheetsGateway.appendValues(table.appendRange(), listOf(row), ValueInputOption.RAW)
         log.debug { "Created breed research run ${entity.runId} for breed ${entity.breedId} with outcome ${entity.outcome}" }
     }
 
     override fun fetchLatestResearchForBreed(breedId: Int): BreedResearchRecord? {
-        sheetsGateway.ensureTableExists(table)
-        val rows = try {
-            sheetsGateway.getValues(table.dataRange()).filter { it.isNotEmpty() }
-        } catch (ex: Exception) {
-            log.error(ex) { "Failed to read breed research sheet." }
-            return null
-        }
-
-        if (rows.isEmpty()) {
-            log.debug { "Breed research sheet returned no rows." }
-            return null
-        }
-
-        for (row in rows.asReversed()) {
-            val record = table.mapper.map(row)
-            if (record != null && record.breedId == breedId && record.outcome == AgentRunOutcome.SUCCESS) {
-                return record
-            }
-        }
-
-        log.debug { "No successful research runs found for breed $breedId." }
-        return null
+        return fetchRecords()
+            .filter { it.breedId == breedId && it.outcome == AgentRunOutcome.SUCCESS }
+            .maxByOrNull { it.completedAt }
     }
 
     override fun fetchAllSuccessfulResearch(): List<BreedResearchRecord> {
-        sheetsGateway.ensureTableExists(table)
-        val rows = try {
-            sheetsGateway.getValues(table.dataRange()).filter { it.isNotEmpty() }
-        } catch (ex: Exception) {
-            log.error(ex) { "Failed to read breed research sheet." }
-            return emptyList()
-        }
-
-        if (rows.isEmpty()) {
-            log.debug { "Breed research sheet returned no rows." }
-            return emptyList()
-        }
-
-        return rows
-            .mapNotNull(table.mapper::map)
+        return fetchRecords()
             .filter { it.outcome == AgentRunOutcome.SUCCESS && !it.report.isNullOrBlank() }
             .sortedByDescending { it.completedAt }
+    }
+
+    override fun fetchLatestRun(): BreedResearchRecord? =
+        fetchRecords().maxByOrNull { it.completedAt }
+
+    private fun fetchRecords(): List<BreedResearchRecord> {
+        sheetsGateway.ensureTableExists(table)
+        return sheetsGateway.getValues(table.dataRange())
+            .filter { it.isNotEmpty() }
+            .mapNotNull(table.mapper::map)
     }
 }

@@ -6,14 +6,15 @@ The deployment expects:
 
 - this API running from `docker-compose.yml`
 - an external Docker network named `shared`
-- an existing Ollama instance available on that `shared` network
+- an Ollama Cloud account and dedicated API key for generation
+- an existing local Ollama instance on `shared` for embeddings
 
 ## 1) Prerequisites
 
 - Docker Engine + Docker Compose plugin installed
 - Access to this repository on the production host
 - A Google service account JSON key with access to the configured Google Sheet
-- A valid Koog/Ollama API key
+- A dedicated Ollama Cloud API key from `https://ollama.com/settings/keys`
 
 Quick checks:
 
@@ -51,18 +52,29 @@ Set values in `.env`:
 | Variable | Required | Description |
 |---|---|---|
 | `GOOGLE_APPLICATION_CREDENTIALS_FILE` | Yes | Absolute host path to Google credentials JSON |
-| `KOOG_OLLAMA_API_KEY` | Yes | API key for direct calls to Ollama's hosted API |
 | `CHICKEN_API_PORT` | No | Host port mapped to container `8080` (default `8080`) |
-| `KOOG_OLLAMA_BASE_URL` | No | Ollama base URL on `shared` for LLM and embeddings (default `http://ollama:11434`) |
-| `KOOG_OLLAMA_WEB_TOOLS_BASE_URL` | No | Hosted Ollama web-tools base URL for `web_search` and `web_fetch` (default `https://ollama.com`) |
+| `KOOG_OLLAMA_BASE_URL` | No | Generation API base URL (default `https://ollama.com`) |
+| `KOOG_OLLAMA_EMBEDDING_BASE_URL` | No | Local embedding endpoint (default `http://ollama:11434`) |
+| `KOOG_AGENT_MODEL` | No | Direct Ollama Cloud model name (default `gpt-oss:120b`) |
+| `KOOG_OLLAMA_WEB_TOOLS_PROVIDER` | No | Search provider (production default `searxng`) |
+| `SEARXNG_BASE_URL` | No | Search service URL on `shared` (production default `http://searxng:8080`) |
 
 Notes:
 
-- `KOOG_OLLAMA_BASE_URL` should point to the Ollama service/container name reachable on `shared`.
-- `KOOG_OLLAMA_WEB_TOOLS_BASE_URL` should normally remain `https://ollama.com`.
-- If your Ollama container is not named `ollama`, update `KOOG_OLLAMA_BASE_URL`.
-- `KOOG_AGENT_BASE_URL` and `KOOG_AGENT_API_KEY` are still accepted as compatibility fallbacks, but prefer the shared `KOOG_OLLAMA_*` variables.
+- Run `./scripts/set-ollama-cloud-key.sh` to validate and install the Cloud key. The key is stored in a mounted `0600` file, not `.env` or Docker environment metadata.
+- The default production path uses local SearXNG, so the Cloud key is sent only to `https://ollama.com`.
+- Ensure `nomic-embed-text` is installed in local Ollama before enabling the jobs.
+- If your local Ollama container is not named `ollama`, update `KOOG_OLLAMA_EMBEDDING_BASE_URL`.
+- Direct `ollama.com` model names do not use the local `-cloud` suffix.
 - Do not commit `.env` or credentials files.
+
+Install the dedicated key and validate provider readiness:
+
+```bash
+./scripts/set-ollama-cloud-key.sh
+```
+
+This enables both agent runtimes but keeps both schedulers disabled.
 
 ## 4) Start the API
 
@@ -89,10 +101,12 @@ docker compose logs -f chicken-api
 Health endpoint:
 
 ```bash
-curl http://localhost:${CHICKEN_API_PORT:-8080}/actuator/health
+curl http://localhost:${CHICKEN_API_PORT:-8080}/readyz
 ```
 
 Expected: JSON health response with `UP`.
+
+Prometheus metrics are exposed only on container port `8081` at `/actuator/prometheus`; the management port is not published to the host.
 
 Also verify API endpoint:
 
@@ -101,6 +115,8 @@ curl http://localhost:${CHICKEN_API_PORT:-8080}/api/v1/breeds/
 ```
 
 ## 6) Day-2 operations
+
+See [`SCHEDULED_JOBS_RUNBOOK.md`](SCHEDULED_JOBS_RUNBOOK.md) for schedules, metrics, alerts, and incident response.
 
 Restart after config changes:
 
@@ -136,17 +152,24 @@ docker network create shared
 - Confirm file exists and is readable on host
 - Confirm service account has Google Sheets access
 
-### App cannot reach Ollama
+### App cannot reach Ollama Cloud
 
-- Verify Ollama container is connected to `shared`
-- Verify `KOOG_OLLAMA_BASE_URL` uses Ollama's reachable container/service name
-- From API container, test DNS/connectivity to Ollama host on port `11434`
+- Verify outbound HTTPS access to `https://ollama.com`
+- Rerun `./scripts/set-ollama-cloud-key.sh` to validate the key and selected model
+- Verify the model uses its direct API name, such as `gpt-oss:120b`, rather than `gpt-oss:120b-cloud`
+
+### App cannot reach local embeddings
+
+- Verify the local Ollama container is connected to `shared`
+- Verify `KOOG_OLLAMA_EMBEDDING_BASE_URL` uses its reachable container/service name
+- Verify `nomic-embed-text` appears in `http://ollama:11434/api/tags`
 
 ### API key validation failure
 
-- Ensure `KOOG_OLLAMA_API_KEY` is set and non-empty in `.env`
+- Verify `secrets/ollama-api-key` exists with mode `0600`
+- Rerun `./scripts/set-ollama-cloud-key.sh`; it validates the key before replacing the current secret
 
-### Web tools return `404` from local Ollama
+### Web search fails
 
-- Verify `KOOG_OLLAMA_WEB_TOOLS_BASE_URL` is `https://ollama.com`
-- Do not point `web_search` or `web_fetch` at the local Ollama container on port `11434`
+- Verify `KOOG_OLLAMA_WEB_TOOLS_PROVIDER=searxng`
+- Verify `SEARXNG_BASE_URL=http://searxng:8080`

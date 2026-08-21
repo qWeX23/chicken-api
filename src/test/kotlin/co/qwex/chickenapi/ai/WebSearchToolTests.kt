@@ -3,6 +3,8 @@ package co.qwex.chickenapi.ai
 import co.qwex.chickenapi.ai.tools.WebSearchTool
 import co.qwex.chickenapi.ai.tools.WebFetchTool
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class WebSearchToolTests {
@@ -23,6 +25,12 @@ class WebSearchToolTests {
     fun `clampMaxResults raises values below lower bound`() {
         val resolved = WebSearchTool.clampMaxResults(requested = 0, defaultMaxResults = 3)
         assertEquals(1, resolved)
+    }
+
+    @Test
+    fun `excluded source matching handles subdomains without matching lookalikes`() {
+        assertTrue(WebSearchTool.isExcludedUrl("https://en.wikipedia.org/wiki/Chicken", setOf("wikipedia.org")))
+        assertFalse(WebSearchTool.isExcludedUrl("https://wikipedia.org.example.com/chicken", setOf("wikipedia.org")))
     }
 
     @Test

@@ -15,8 +15,12 @@ class KoogOllamaConfigurationValidator(
             return
         }
 
-        require(!ollamaProperties.apiKey.isNullOrBlank()) {
-            "koog.ollama.api-key must be set when any Koog agent is enabled"
+        require(
+            !ollamaProperties.generationUsesOllamaCloud ||
+                !ollamaProperties.apiKeyRequired ||
+                ollamaProperties.resolvedGenerationApiKey != null,
+        ) {
+            "A readable Ollama API key is required, and koog.ollama.base-url must be https://ollama.com"
         }
     }
 }

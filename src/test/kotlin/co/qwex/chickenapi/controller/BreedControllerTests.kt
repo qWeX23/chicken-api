@@ -36,11 +36,10 @@ class BreedControllerTests {
             .getValues(BreedsTable.dataRange(), ValueRenderOption.FORMATTED_VALUE)
     }
 
-    private fun mockBreedByIdResponse(id: Int, values: List<List<Any?>>) {
-        val range = BreedsTable.rowRange(id + 1)
+    private fun mockBreedByIdResponse(values: List<List<Any?>>) {
         Mockito.doReturn(values)
             .`when`(sheetsGateway)
-            .getValues(range, ValueRenderOption.FORMATTED_VALUE)
+            .getValues(BreedsTable.dataRange(), ValueRenderOption.FORMATTED_VALUE)
     }
 
     @Test
@@ -67,7 +66,7 @@ class BreedControllerTests {
     @Test
     fun `get breed by id`() {
         val id = 1
-        mockBreedByIdResponse(id, listOf(listOf(1, "Silkie", "China", "White", "Small", "Docile", "Fluffy", "img", 200)))
+        mockBreedByIdResponse(listOf(listOf(1, "Silkie", "China", "White", "Small", "Docile", "Fluffy", "img", 200)))
 
         mockMvc.get("/api/v1/breeds/$id")
             .andExpect { status { isOk() } }

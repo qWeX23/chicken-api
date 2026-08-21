@@ -16,7 +16,7 @@ class SaveChickenFactToolTests {
         val tool = SaveChickenFactTool(
             duplicateCheckService =
                 object : ChickenFactDuplicateCheckService {
-                    override suspend fun checkFactForDuplicate(fact: String): FactDuplicateCheckResult =
+                    override suspend fun checkFactForDuplicate(fact: String, sourceUrl: String?): FactDuplicateCheckResult =
                         FactDuplicateCheckResult(
                             hasHit = true,
                             threshold = 0.88,
@@ -56,7 +56,7 @@ class SaveChickenFactToolTests {
         val tool = SaveChickenFactTool(
             duplicateCheckService =
                 object : ChickenFactDuplicateCheckService {
-                    override suspend fun checkFactForDuplicate(fact: String): FactDuplicateCheckResult =
+                    override suspend fun checkFactForDuplicate(fact: String, sourceUrl: String?): FactDuplicateCheckResult =
                         FactDuplicateCheckResult(
                             hasHit = false,
                             threshold = 0.88,
