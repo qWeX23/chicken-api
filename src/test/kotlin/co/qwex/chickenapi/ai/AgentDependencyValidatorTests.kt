@@ -22,7 +22,7 @@ class AgentDependencyValidatorTests {
 
     @Test
     fun `generation probe accepts an authenticated chat response`() {
-        val client = clientResponding(HttpStatusCode.OK, """{"message":{"content":"OK"}}""")
+        val client = clientResponding(HttpStatusCode.OK, """{"choices":[{"message":{"role":"assistant","content":"OK"}}]}""")
         val validator = AgentDependencyValidator(KoogOllamaProperties())
 
         assertDoesNotThrow {
@@ -38,7 +38,7 @@ class AgentDependencyValidatorTests {
                 MockEngine { request ->
                     requestBody = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
                     respond(
-                        content = """{"message":{"content":"OK"}}""",
+                        content = """{"choices":[{"message":{"role":"assistant","content":"OK"}}]}""",
                         status = HttpStatusCode.OK,
                         headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
                     )
@@ -53,12 +53,12 @@ class AgentDependencyValidatorTests {
         runBlocking { validator.requireGeneration(client, "gpt-oss:120b") }
 
         assertTrue(requestBody.contains("\"stream\":false"))
-        assertTrue(requestBody.contains("\"num_predict\":2"))
+        assertTrue(requestBody.contains("\"max_tokens\":2"))
     }
 
     @Test
     fun `generation probe rejects unauthorized credentials`() {
-        val client = clientResponding(HttpStatusCode.Unauthorized, """{"error":"Unauthorized"}""")
+        val client = clientResponding(HttpStatusCode.Unauthorized, """{"error":{"message":"Unauthorized"}}""")
         val validator = AgentDependencyValidator(KoogOllamaProperties())
 
         assertThrows(IllegalStateException::class.java) {

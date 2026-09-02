@@ -6,9 +6,11 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
@@ -18,12 +20,15 @@ import org.springframework.stereotype.Component
 class AgentDependencyValidator(
     private val ollamaProperties: KoogOllamaProperties,
 ) {
-    suspend fun requireModels(
+    suspend fun requireModelsAvailable(
         client: HttpClient,
         models: Collection<String>,
         baseUrl: String = ollamaProperties.normalizedBaseUrl,
     ) {
-        val response = client.get("$baseUrl/api/tags") {
+        val response = client.get("$baseUrl/v1/models") {
+            ollamaProperties.resolvedGenerationApiKey?.takeIf { it.isNotBlank() }?.let {
+                header(HttpHeaders.Authorization, "Bearer $it")
+            }
             timeout {
                 requestTimeoutMillis = ollamaProperties.readinessRequestTimeout.toMillis()
                 connectTimeoutMillis = 10_000
@@ -31,21 +36,24 @@ class AgentDependencyValidator(
             }
         }
         check(response.status.isSuccess()) {
-            "Ollama model discovery failed with status ${response.status}"
+            "Gateway model discovery failed with status ${response.status}"
         }
-        val availableModels = response.body<OllamaTagsResponse>().models
-            .map { normalizeModelName(it.name) }
+        val availableModels = response.body<OpenAiModelsResponse>().data
+            .map { normalizeModelName(it.id) }
             .toSet()
         val missingModels = models
             .map(::normalizeModelName)
             .filterNot(availableModels::contains)
         check(missingModels.isEmpty()) {
-            "Required Ollama models are unavailable: ${missingModels.joinToString()}"
+            "Required gateway models are unavailable: ${missingModels.joinToString()}"
         }
     }
 
     suspend fun requireGeneration(client: HttpClient, model: String) {
-        val response = client.post("${ollamaProperties.normalizedBaseUrl}/api/chat") {
+        val response = client.post("${ollamaProperties.normalizedBaseUrl}/v1/chat/completions") {
+            ollamaProperties.resolvedGenerationApiKey?.takeIf { it.isNotBlank() }?.let {
+                header(HttpHeaders.Authorization, "Bearer $it")
+            }
             contentType(ContentType.Application.Json)
             timeout {
                 requestTimeoutMillis = ollamaProperties.readinessRequestTimeout.toMillis()
@@ -53,23 +61,23 @@ class AgentDependencyValidator(
                 socketTimeoutMillis = ollamaProperties.readinessRequestTimeout.toMillis()
             }
             setBody(
-                OllamaChatProbeRequest(
+                OpenAiChatProbeRequest(
                     model = model,
-                    messages = listOf(OllamaChatProbeMessage(content = "Reply with OK.")),
+                    messages = listOf(OpenAiChatProbeMessage(content = "Reply with OK.")),
                     stream = false,
-                    options = OllamaChatProbeOptions(numPredict = 2),
+                    maxTokens = 2,
                 ),
             )
         }
         check(response.status.isSuccess()) {
-            "Ollama generation probe failed with status ${response.status}"
+            "Gateway generation probe failed with status ${response.status}"
         }
-        val result = response.body<OllamaChatProbeResponse>()
-        check(result.error.isNullOrBlank()) {
-            "Ollama generation probe failed: ${result.error}"
+        val result = response.body<OpenAiChatProbeResponse>()
+        check(result.error == null) {
+            "Gateway generation probe failed: ${result.error?.message}"
         }
-        check(result.message != null) {
-            "Ollama generation probe returned no assistant message"
+        check(result.choices.firstOrNull() != null) {
+            "Gateway generation probe returned no assistant message"
         }
     }
 
@@ -90,37 +98,43 @@ class AgentDependencyValidator(
 }
 
 @Serializable
-private data class OllamaTagsResponse(
-    val models: List<OllamaModel> = emptyList(),
+private data class OpenAiModelsResponse(
+    @kotlinx.serialization.SerialName("data")
+    val data: List<OpenAiModel> = emptyList(),
 )
 
 @Serializable
-private data class OllamaModel(
-    val name: String,
+private data class OpenAiModel(
+    val id: String,
 )
 
 @Serializable
-private data class OllamaChatProbeRequest(
+private data class OpenAiChatProbeRequest(
     val model: String,
-    val messages: List<OllamaChatProbeMessage>,
+    val messages: List<OpenAiChatProbeMessage>,
     val stream: Boolean,
-    val options: OllamaChatProbeOptions,
+    @kotlinx.serialization.SerialName("max_tokens")
+    val maxTokens: Int,
 )
 
 @Serializable
-private data class OllamaChatProbeMessage(
+private data class OpenAiChatProbeMessage(
     val role: String = "user",
     val content: String,
 )
 
 @Serializable
-private data class OllamaChatProbeOptions(
-    @kotlinx.serialization.SerialName("num_predict")
-    val numPredict: Int,
+private data class OpenAiChatProbeResponse(
+    val choices: List<OpenAiChatProbeChoice> = emptyList(),
+    val error: OpenAiChatProbeError? = null,
 )
 
 @Serializable
-private data class OllamaChatProbeResponse(
-    val message: OllamaChatProbeMessage? = null,
-    val error: String? = null,
+private data class OpenAiChatProbeChoice(
+    val message: OpenAiChatProbeMessage? = null,
+)
+
+@Serializable
+private data class OpenAiChatProbeError(
+    val message: String? = null,
 )

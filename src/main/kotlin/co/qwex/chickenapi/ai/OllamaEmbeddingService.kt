@@ -65,7 +65,7 @@ class OllamaEmbeddingService(
         }
         ready = try {
             runBlocking {
-                dependencyValidator.requireModels(
+                dependencyValidator.requireModelsAvailable(
                     client = httpClient,
                     models = listOf(ollamaProperties.embeddingModel),
                     baseUrl = sanitizedBaseUrl,
@@ -73,7 +73,7 @@ class OllamaEmbeddingService(
             }
             true
         } catch (ex: Exception) {
-            log.error(ex) { "Ollama embedding dependency is not ready" }
+            log.error(ex) { "Embedding dependency is not ready" }
             nextInitializationAttemptMillis = System.currentTimeMillis() + RETRY_DELAY_MILLIS
             false
         }
@@ -93,11 +93,11 @@ class OllamaEmbeddingService(
         }
 
         val response = try {
-            httpClient.post("$sanitizedBaseUrl/api/embeddings") {
+            httpClient.post("$sanitizedBaseUrl/v1/embeddings") {
                 setBody(
                     EmbeddingRequest(
                         model = ollamaProperties.embeddingModel,
-                        prompt = fact,
+                        input = fact,
                     ),
                 )
             }
@@ -124,11 +124,12 @@ class OllamaEmbeddingService(
             log.warn(ex) { "Embedding response could not be decoded" }
             return null
         }
-        if (result.embedding.isEmpty()) {
+        val embedding = result.data.firstOrNull()?.embedding.orEmpty()
+        if (embedding.isEmpty()) {
             log.warn { "Embedding response returned empty vector." }
             markNotReady()
         }
-        return result.embedding.takeIf { it.isNotEmpty() }
+        return embedding.takeIf { it.isNotEmpty() }
     }
 
     @PreDestroy
@@ -168,11 +169,17 @@ class OllamaEmbeddingService(
 @Serializable
 private data class EmbeddingRequest(
     val model: String,
-    val prompt: String,
+    val input: String,
 )
 
 @Serializable
 private data class EmbeddingResponse(
+    @SerialName("data")
+    val data: List<EmbeddingData> = emptyList(),
+)
+
+@Serializable
+private data class EmbeddingData(
     @SerialName("embedding")
     val embedding: List<Double> = emptyList(),
 )
