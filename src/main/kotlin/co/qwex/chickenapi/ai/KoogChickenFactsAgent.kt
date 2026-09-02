@@ -9,10 +9,6 @@ import ai.koog.agents.features.tracing.feature.Tracing
 import ai.koog.agents.features.tracing.writer.TraceFeatureMessageLogWriter
 import ai.koog.http.client.ktor.KtorKoogHttpClient
 import ai.koog.prompt.dsl.prompt
-import ai.koog.prompt.executor.clients.ConnectionTimeoutConfig
-import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
-import ai.koog.prompt.executor.ollama.client.OllamaClient
-import ai.koog.prompt.executor.ollama.client.OllamaParams
 import ai.koog.prompt.llm.LLMCapability
 import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
@@ -39,8 +35,9 @@ import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 
 /**
- * Wraps a Koog single-run agent that uses the shared Ollama runtime for model
- * execution and exposes the chicken-facts workflow to the rest of the Spring app.
+ * Wraps a Koog single-run agent that uses the shared LiteLLM gateway runtime
+ * for model execution and exposes the chicken-facts workflow to the rest of
+ * the Spring app.
  */
 @Service
 class KoogChickenFactsAgent(
@@ -101,7 +98,7 @@ class KoogChickenFactsAgent(
         }
         try {
             runBlocking {
-                dependencyValidator.requireModels(llmHttpClient, listOf(properties.model))
+                dependencyValidator.requireModelsAvailable(llmHttpClient, listOf(properties.model))
                 dependencyValidator.requireGeneration(llmHttpClient, properties.model)
                 dependencyValidator.requireWebSearch(webToolClient)
             }
@@ -110,27 +107,20 @@ class KoogChickenFactsAgent(
             deferInitializationRetry()
             return
         }
-        val promptExecutor =
-            MultiLLMPromptExecutor(
-                LLMProvider.Ollama to
-                    OllamaClient(
-                        baseUrl = sanitizedBaseUrl,
-                        httpClientFactory = KtorKoogHttpClient.Factory(llmHttpClient),
-                        timeoutConfig = ollamaTimeoutConfig(),
-                    ),
-            )
-
-        val model =
-            LLModel(
-                provider = LLMProvider.Ollama,
-                id = properties.model,
-                capabilities = listOf(
-                    LLMCapability.Temperature,
-                    LLMCapability.Tools,
-                    LLMCapability.Schema.JSON.Basic,
-                ),
+        val components =
+            KoogGatewayExecutorFactory.create(
+                baseUrl = sanitizedBaseUrl,
+                apiKey = requireNotNull(ollamaProperties.resolvedGenerationApiKey) {
+                    "A gateway API key is required for the Koog agents (koog.ollama.api-key / api-key-file)"
+                },
+                httpClient = llmHttpClient,
+                requestTimeout = ollamaProperties.llmRequestTimeout,
+                modelId = properties.model,
                 contextLength = properties.contextLength.toLong(),
             )
+        val promptExecutor = components.promptExecutor
+
+        val model = components.model
 
         val saveChickenFactTool = SaveChickenFactTool(chickenFactDuplicateCheckService)
         val webSearchTool =
@@ -162,10 +152,7 @@ class KoogChickenFactsAgent(
 
         val agentConfig =
             AIAgentConfig(
-                prompt = prompt(
-                    id = "chicken_facts_prompt",
-                    params = OllamaParams(think = false),
-                ) {
+                prompt = prompt(id = "chicken_facts_prompt") {
                     system(
                         """
         You are a chicken trivia enthusiast who loves discovering fun, quirky, and surprising facts about chickens.
@@ -354,13 +341,6 @@ class KoogChickenFactsAgent(
             false
         }
     }
-
-    private fun ollamaTimeoutConfig() =
-        ConnectionTimeoutConfig(
-            requestTimeoutMillis = ollamaProperties.llmRequestTimeout.toMillis(),
-            connectTimeoutMillis = 10_000,
-            socketTimeoutMillis = ollamaProperties.llmRequestTimeout.toMillis(),
-        )
 
     companion object {
         private const val DEPENDENCY_RETRY_DELAY_MILLIS = 60_000L

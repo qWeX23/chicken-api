@@ -20,7 +20,7 @@ class KoogOllamaConfigurationValidator(
                 !ollamaProperties.apiKeyRequired ||
                 ollamaProperties.resolvedGenerationApiKey != null,
         ) {
-            "A readable Ollama API key is required, and koog.ollama.base-url must be https://ollama.com"
+            "A readable gateway API key is required when koog.ollama.base-url points at Ollama Cloud"
         }
     }
 }

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
@@ -100,6 +101,17 @@ class KoogOllamaConfigurationValidatorTests {
         )
 
         assertNull(properties.resolvedEmbeddingApiKey)
+    }
+
+    @Test
+    fun `gateway base url resolves the generation api key`() {
+        val properties = KoogOllamaProperties(
+            baseUrl = "http://litellm:4000",
+            apiKey = "gateway-key",
+        )
+
+        assertEquals("gateway-key", properties.resolvedGenerationApiKey)
+        assertTrue(properties.generationUsesGateway)
     }
 
     @Test

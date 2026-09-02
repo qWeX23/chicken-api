@@ -46,6 +46,12 @@ data class KoogOllamaProperties(
     val generationUsesOllamaCloud: Boolean
         get() = isOllamaCloud(normalizedBaseUrl)
 
+    val generationUsesAuthenticatedEndpoint: Boolean
+        get() = generationUsesOllamaCloud || generationUsesGateway
+
+    val generationUsesGateway: Boolean
+        get() = isLocalGateway(normalizedBaseUrl)
+
     val webToolsUseOllamaCloud: Boolean
         get() = isOllamaCloud(normalizedWebToolsBaseUrl)
 
@@ -53,7 +59,7 @@ data class KoogOllamaProperties(
         get() = resolveSecret(apiKeyFile, apiKey)
 
     val resolvedGenerationApiKey: String?
-        get() = resolvedApiKey.takeIf { generationUsesOllamaCloud }
+        get() = resolvedApiKey.takeIf { generationUsesAuthenticatedEndpoint }
 
     val resolvedWebToolsApiKey: String?
         get() =
@@ -74,6 +80,13 @@ data class KoogOllamaProperties(
             uri.scheme.equals("https", ignoreCase = true) &&
                 uri.host.equals("ollama.com", ignoreCase = true) &&
                 (uri.port == -1 || uri.port == 443)
+        }.getOrDefault(false)
+
+    private fun isLocalGateway(url: String): Boolean =
+        runCatching {
+            val uri = URI(url)
+            uri.host.equals("litellm", ignoreCase = true) &&
+                (uri.port == -1 || uri.port == 4000)
         }.getOrDefault(false)
 
     private fun resolveSecret(file: String?, value: String?): String? =

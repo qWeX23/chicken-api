@@ -5,15 +5,7 @@ import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.features.opentelemetry.feature.OpenTelemetry
 import ai.koog.agents.features.tracing.feature.Tracing
 import ai.koog.agents.features.tracing.writer.TraceFeatureMessageLogWriter
-import ai.koog.http.client.ktor.KtorKoogHttpClient
 import ai.koog.prompt.dsl.prompt
-import ai.koog.prompt.executor.clients.ConnectionTimeoutConfig
-import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
-import ai.koog.prompt.executor.ollama.client.OllamaClient
-import ai.koog.prompt.executor.ollama.client.OllamaParams
-import ai.koog.prompt.llm.LLMCapability
-import ai.koog.prompt.llm.LLMProvider
-import ai.koog.prompt.llm.LLModel
 import co.qwex.chickenapi.ai.tools.GetBreedDetailsTool
 import co.qwex.chickenapi.ai.tools.GetNextBreedToResearchTool
 import co.qwex.chickenapi.ai.tools.BreedResearchRunContext
@@ -100,7 +92,7 @@ class KoogBreedResearchAgent(
         }
         try {
             kotlinx.coroutines.runBlocking {
-                dependencyValidator.requireModels(llmHttpClient, listOf(properties.model))
+                dependencyValidator.requireModelsAvailable(llmHttpClient, listOf(properties.model))
                 dependencyValidator.requireGeneration(llmHttpClient, properties.model)
                 dependencyValidator.requireWebSearch(webToolClient)
             }
@@ -109,27 +101,20 @@ class KoogBreedResearchAgent(
             deferInitializationRetry()
             return
         }
-        val promptExecutor =
-            MultiLLMPromptExecutor(
-                LLMProvider.Ollama to
-                    OllamaClient(
-                        baseUrl = sanitizedBaseUrl,
-                        httpClientFactory = KtorKoogHttpClient.Factory(llmHttpClient),
-                        timeoutConfig = ollamaTimeoutConfig(),
-                    ),
-            )
-
-        val model =
-            LLModel(
-                provider = LLMProvider.Ollama,
-                id = properties.model,
-                capabilities = listOf(
-                    LLMCapability.Temperature,
-                    LLMCapability.Tools,
-                    LLMCapability.Schema.JSON.Basic,
-                ),
+        val components =
+            KoogGatewayExecutorFactory.create(
+                baseUrl = sanitizedBaseUrl,
+                apiKey = requireNotNull(ollamaProperties.resolvedGenerationApiKey) {
+                    "A gateway API key is required for the Koog agents (koog.ollama.api-key / api-key-file)"
+                },
+                httpClient = llmHttpClient,
+                requestTimeout = ollamaProperties.llmRequestTimeout,
+                modelId = properties.model,
                 contextLength = properties.contextLength.toLong(),
             )
+        val promptExecutor = components.promptExecutor
+
+        val model = components.model
 
         // Create tools
         val getNextBreedTool = GetNextBreedToResearchTool(breedRepository, runContext)
@@ -166,7 +151,6 @@ class KoogBreedResearchAgent(
             AIAgentConfig(
                 prompt = prompt(
                     id = "breed_research_prompt",
-                    params = OllamaParams(think = false),
                 ) {
                     system(BREED_RESEARCH_SYSTEM_PROMPT)
                 },
@@ -294,13 +278,6 @@ class KoogBreedResearchAgent(
             false
         }
     }
-
-    private fun ollamaTimeoutConfig() =
-        ConnectionTimeoutConfig(
-            requestTimeoutMillis = ollamaProperties.llmRequestTimeout.toMillis(),
-            connectTimeoutMillis = 10_000,
-            socketTimeoutMillis = ollamaProperties.llmRequestTimeout.toMillis(),
-        )
 
     companion object {
         private const val DEPENDENCY_RETRY_DELAY_MILLIS = 60_000L

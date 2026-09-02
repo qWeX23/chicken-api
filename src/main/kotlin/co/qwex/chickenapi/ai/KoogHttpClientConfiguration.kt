@@ -27,7 +27,12 @@ class KoogHttpClientConfiguration {
     @ConditionalOnProperty(name = ["koog.agent.enabled"], havingValue = "true", matchIfMissing = true)
     fun koogChickenFactsHttpClient(properties: KoogOllamaProperties): HttpClient =
         createClient(
-            apiKey = properties.resolvedGenerationApiKey,
+            // No default Authorization header: the Koog executor appends its
+            // own Bearer from the apiKey passed to OpenAILLMClient. Adding one
+            // here produces two Authorization headers, which LiteLLM hashes as
+            // "key,key" and rejects with 401. The dependency validator sets
+            // its own Bearer per probe.
+            apiKey = null,
             extraHeaders = properties.extraHeaders.takeIf { properties.generationUsesOllamaCloud }.orEmpty(),
             requestTimeout = properties.llmRequestTimeout,
         )
@@ -45,7 +50,7 @@ class KoogHttpClientConfiguration {
         ollamaProperties: KoogOllamaProperties,
     ): HttpClient =
         createClient(
-            apiKey = ollamaProperties.resolvedGenerationApiKey,
+            apiKey = null,
             extraHeaders = ollamaProperties.extraHeaders.takeIf { ollamaProperties.generationUsesOllamaCloud }.orEmpty(),
             requestTimeout = ollamaProperties.llmRequestTimeout,
         )
@@ -57,11 +62,11 @@ class KoogHttpClientConfiguration {
         createWebToolsClient(properties)
 
     private fun createWebToolsClient(properties: KoogOllamaProperties): HttpClient {
-        val hostedOllama =
+        val hostedOllamaAuth =
             properties.webToolsProvider == WebToolsProvider.OLLAMA && properties.webToolsUseOllamaCloud
         return createClient(
-            apiKey = properties.resolvedWebToolsApiKey.takeIf { hostedOllama },
-            extraHeaders = properties.extraHeaders.takeIf { hostedOllama }.orEmpty(),
+            apiKey = properties.resolvedWebToolsApiKey.takeIf { hostedOllamaAuth },
+            extraHeaders = properties.extraHeaders.takeIf { hostedOllamaAuth }.orEmpty(),
             requestTimeout = properties.webToolsRequestTimeout,
         )
     }

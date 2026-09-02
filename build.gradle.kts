@@ -26,8 +26,8 @@ repositories {
     mavenCentral()
 }
 
-val koogVersion = "1.0.0"
-val koogBetaVersion = "1.0.0-beta"
+val koogVersion = "1.1.1"
+val koogBetaVersion = "1.1.1-beta"
 val opentelemetryVersion = "1.61.0"
 val ktorVersion = "3.3.3"
 val okioVersion = "3.17.0"
